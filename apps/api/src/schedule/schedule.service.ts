@@ -1,0 +1,295 @@
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { MeetingStatus, Role } from '@prisma/client';
+import { PrismaService } from '../prisma/prisma.service';
+import { AuditService } from '../audit/audit.service';
+
+export type BusySlot = {
+  id: string;
+  source: 'schedule' | 'meeting';
+  title: string;
+  startAt: Date;
+  endAt: Date;
+};
+
+export type AltSlot = {
+  startAt: string;
+  endAt: string;
+  label: string;
+};
+
+function overlaps(aStart: Date, aEnd: Date, bStart: Date, bEnd: Date) {
+  return aStart < bEnd && bStart < aEnd;
+}
+
+@Injectable()
+export class ScheduleService {
+  constructor(
+    private prisma: PrismaService,
+    private audit: AuditService,
+  ) {}
+
+  list(user: { id: string; role: Role }, ownerId?: string) {
+    const canBrowse =
+      user.role === Role.SPEAKER ||
+      user.role === Role.ADMIN ||
+      user.role === Role.SECRETARY_GENERAL;
+    if (ownerId && ownerId !== user.id && !canBrowse) {
+      throw new ForbiddenException('Cannot view another officer schedule');
+    }
+    const where = ownerId
+      ? { ownerId }
+      : canBrowse
+        ? undefined
+        : { ownerId: user.id };
+    return this.prisma.scheduleItem.findMany({
+      where,
+      orderBy: { startAt: 'asc' },
+      include: { owner: { select: { displayName: true } } },
+    });
+  }
+
+  /** Busy intervals for an owner: diary items + approved meetings (office-wide diary). */
+  async busySlots(ownerId: string, from: Date, to: Date): Promise<BusySlot[]> {
+    const [items, meetings] = await Promise.all([
+      this.prisma.scheduleItem.findMany({
+        where: {
+          ownerId,
+          startAt: { lt: to },
+          endAt: { gt: from },
+        },
+      }),
+      this.prisma.meeting.findMany({
+        where: {
+          archived: false,
+          status: MeetingStatus.APPROVED,
+          startAt: { not: null, lt: to },
+          OR: [{ endAt: null }, { endAt: { gt: from } }],
+        },
+      }),
+    ]);
+
+    const slots: BusySlot[] = items.map((i) => ({
+      id: i.id,
+      source: 'schedule' as const,
+      title: i.title,
+      startAt: i.startAt,
+      endAt: i.endAt,
+    }));
+
+    for (const m of meetings) {
+      if (!m.startAt) continue;
+      const end = m.endAt || new Date(m.startAt.getTime() + 60 * 60 * 1000);
+      if (!overlaps(from, to, m.startAt, end)) continue;
+      slots.push({
+        id: m.id,
+        source: 'meeting',
+        title: m.title,
+        startAt: m.startAt,
+        endAt: end,
+      });
+    }
+    return slots.sort((a, b) => +a.startAt - +b.startAt);
+  }
+
+  async findConflicts(
+    ownerId: string,
+    startAt: Date,
+    endAt: Date,
+    excludeScheduleId?: string,
+  ) {
+    if (!(startAt < endAt)) {
+      throw new BadRequestException('endAt must be after startAt');
+    }
+    const windowStart = new Date(startAt.getTime() - 24 * 60 * 60 * 1000);
+    const windowEnd = new Date(endAt.getTime() + 24 * 60 * 60 * 1000);
+    const busy = await this.busySlots(ownerId, windowStart, windowEnd);
+    return busy.filter(
+      (s) =>
+        !(s.source === 'schedule' && excludeScheduleId && s.id === excludeScheduleId) &&
+        overlaps(startAt, endAt, s.startAt, s.endAt),
+    );
+  }
+
+  /**
+   * Suggest free slots of the same duration within ±2 days (office hours 09:00–17:00 PKT-naive local).
+   * Acceptance test: conflict within overlapping window; alternatives are non-overlapping.
+   */
+  async suggestAlternatives(
+    ownerId: string,
+    startAt: Date,
+    endAt: Date,
+    limit = 5,
+  ): Promise<AltSlot[]> {
+    const durationMs = Math.max(15 * 60_000, endAt.getTime() - startAt.getTime());
+    const searchFrom = new Date(startAt.getTime() - 2 * 24 * 60 * 60 * 1000);
+    const searchTo = new Date(startAt.getTime() + 3 * 24 * 60 * 60 * 1000);
+    const busy = await this.busySlots(ownerId, searchFrom, searchTo);
+
+    const candidates: Date[] = [];
+    // Immediate offsets from requested start
+    for (const mins of [30, 60, 90, 120, 180]) {
+      candidates.push(new Date(startAt.getTime() + mins * 60_000));
+    }
+    // Next mornings at 10:00 and afternoons at 14:00 for 3 days
+    for (let d = 0; d < 3; d++) {
+      const day = new Date(startAt);
+      day.setDate(day.getDate() + d);
+      for (const hour of [10, 11, 14, 15]) {
+        const c = new Date(day);
+        c.setHours(hour, 0, 0, 0);
+        if (c.getTime() !== startAt.getTime()) candidates.push(c);
+      }
+    }
+
+    const alts: AltSlot[] = [];
+    const seen = new Set<string>();
+    for (const candStart of candidates) {
+      if (candStart.getHours() < 9 || candStart.getHours() >= 17) continue;
+      const candEnd = new Date(candStart.getTime() + durationMs);
+      if (candEnd.getHours() > 18) continue;
+      const key = candStart.toISOString();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const hit = busy.some((s) => overlaps(candStart, candEnd, s.startAt, s.endAt));
+      if (hit) continue;
+      alts.push({
+        startAt: candStart.toISOString(),
+        endAt: candEnd.toISOString(),
+        label: `${candStart.toLocaleString(undefined, {
+          weekday: 'short',
+          day: 'numeric',
+          month: 'short',
+          hour: 'numeric',
+          minute: '2-digit',
+        })} (${Math.round(durationMs / 60000)} min)`,
+      });
+      if (alts.length >= limit) break;
+    }
+    return alts;
+  }
+
+  async check(
+    user: { id: string; role: Role },
+    data: { startAt: string; endAt: string; ownerId?: string; excludeId?: string },
+  ) {
+    const ownerId = data.ownerId || user.id;
+    const canBrowse =
+      user.role === Role.SPEAKER ||
+      user.role === Role.ADMIN ||
+      user.role === Role.SECRETARY_GENERAL ||
+      user.role === Role.SPECIAL_SECRETARY;
+    if (ownerId !== user.id && !canBrowse) {
+      throw new ForbiddenException('Cannot check another officer schedule');
+    }
+    const startAt = new Date(data.startAt);
+    const endAt = new Date(data.endAt);
+    const conflicts = await this.findConflicts(ownerId, startAt, endAt, data.excludeId);
+    const alternatives =
+      conflicts.length > 0 ? await this.suggestAlternatives(ownerId, startAt, endAt) : [];
+    return {
+      conflict: conflicts.length > 0,
+      conflicts: conflicts.map((c) => ({
+        id: c.id,
+        source: c.source,
+        title: c.title,
+        startAt: c.startAt.toISOString(),
+        endAt: c.endAt.toISOString(),
+      })),
+      alternatives,
+    };
+  }
+
+  async create(
+    actor: { id: string; role: Role },
+    ownerId: string,
+    data: {
+      title: string;
+      startAt: string;
+      endAt: string;
+      location?: string;
+      force?: boolean;
+    },
+  ) {
+    const canCreateForOthers =
+      actor.role === Role.SPEAKER ||
+      actor.role === Role.ADMIN ||
+      actor.role === Role.SECRETARY_GENERAL ||
+      actor.role === Role.SPECIAL_SECRETARY;
+    if (ownerId !== actor.id && !canCreateForOthers) {
+      throw new ForbiddenException('Cannot create schedule for another user');
+    }
+    const startAt = new Date(data.startAt);
+    const endAt = new Date(data.endAt);
+    if (!(startAt < endAt)) {
+      throw new BadRequestException('endAt must be after startAt');
+    }
+
+    const conflicts = await this.findConflicts(ownerId, startAt, endAt);
+    if (conflicts.length && !data.force) {
+      const alternatives = await this.suggestAlternatives(ownerId, startAt, endAt);
+      throw new ConflictException({
+        message: 'Schedule conflict detected',
+        conflicts: conflicts.map((c) => ({
+          id: c.id,
+          source: c.source,
+          title: c.title,
+          startAt: c.startAt.toISOString(),
+          endAt: c.endAt.toISOString(),
+        })),
+        alternatives,
+      });
+    }
+
+    const item = await this.prisma.scheduleItem.create({
+      data: {
+        ownerId,
+        title: data.title,
+        startAt,
+        endAt,
+        location: data.location,
+      },
+    });
+    await this.audit.record({
+      actorId: actor.id,
+      action: 'SCHEDULE_CREATE',
+      entityType: 'ScheduleItem',
+      entityId: item.id,
+      summary: `Diary: ${item.title}${conflicts.length ? ' (forced over conflict)' : ''}`,
+    });
+    return {
+      item,
+      conflictForced: conflicts.length > 0,
+      conflicts: conflicts.map((c) => ({
+        id: c.id,
+        source: c.source,
+        title: c.title,
+        startAt: c.startAt.toISOString(),
+        endAt: c.endAt.toISOString(),
+      })),
+    };
+  }
+
+  async remove(id: string, user: { id: string; role: Role }) {
+    const item = await this.prisma.scheduleItem.findUnique({ where: { id } });
+    if (!item) throw new NotFoundException();
+    const canDeleteAny = user.role === Role.SPEAKER || user.role === Role.ADMIN;
+    if (item.ownerId !== user.id && !canDeleteAny) {
+      throw new ForbiddenException('Cannot delete this schedule item');
+    }
+    await this.prisma.scheduleItem.delete({ where: { id } });
+    await this.audit.record({
+      actorId: user.id,
+      action: 'SCHEDULE_DELETE',
+      entityType: 'ScheduleItem',
+      entityId: id,
+      summary: `Removed diary item: ${item.title}`,
+    });
+    return { ok: true };
+  }
+}

@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.next/
+.env
+apps/api/.env
+.cloudflare.env
+apps/api/.local-storage/
+apps/api/.pgdata/
+*.pem
+**/credentials.json
+
+*.log
+.DS_Store
+coverage/

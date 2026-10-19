@@ -1,0 +1,13 @@
+ALTER TABLE "Message" ADD COLUMN IF NOT EXISTS "textEnc" BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE "Message" ADD COLUMN IF NOT EXISTS "priority" TEXT NOT NULL DEFAULT 'ROUTINE';
+ALTER TABLE "Message" ADD COLUMN IF NOT EXISTS "matterId" TEXT;
+
+DO $$ BEGIN
+  ALTER TABLE "Message" ADD CONSTRAINT "Message_matterId_fkey"
+    FOREIGN KEY ("matterId") REFERENCES "Matter"("id")
+    ON DELETE SET NULL ON UPDATE CASCADE;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+
+CREATE INDEX IF NOT EXISTS "Message_matterId_idx" ON "Message"("matterId");

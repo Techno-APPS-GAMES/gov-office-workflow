@@ -1,0 +1,7 @@
+-- AlterTable
+ALTER TABLE "CallRecord" ADD COLUMN IF NOT EXISTS "organisation" TEXT;
+ALTER TABLE "CallRecord" ADD COLUMN IF NOT EXISTS "phone" TEXT;
+ALTER TABLE "CallRecord" ADD COLUMN IF NOT EXISTS "addressedTo" TEXT;
+ALTER TABLE "CallRecord" ADD COLUMN IF NOT EXISTS "actionRequired" TEXT;
+ALTER TABLE "CallRecord" ADD COLUMN IF NOT EXISTS "followUpNotes" TEXT;
+ALTER TABLE "CallRecord" ADD COLUMN IF NOT EXISTS "meetingId" TEXT;

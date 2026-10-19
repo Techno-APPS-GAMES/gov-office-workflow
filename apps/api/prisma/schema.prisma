@@ -1,0 +1,501 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  SPEAKER
+  SECRETARY_GENERAL
+  SPECIAL_SECRETARY
+  DG_IT
+  ADMIN
+}
+
+enum Classification {
+  PUBLIC
+  INTERNAL
+  CONFIDENTIAL
+}
+
+enum MatterStatus {
+  OPEN
+  IN_PROGRESS
+  AWAITING_RECEIPT
+  AWAITING_DECISION
+  CLOSED
+}
+
+enum DirectionStatus {
+  ISSUED
+  IN_PROGRESS
+  EVIDENCE_SUBMITTED
+  RETURNED
+  CLOSED
+  OVERDUE
+  ESCALATED
+}
+
+enum WorkItemStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+}
+
+enum MeetingStatus {
+  REQUESTED
+  APPROVED
+  DECLINED
+  COMPLETED
+  ARCHIVED
+}
+
+enum CallStatus {
+  LOGGED
+  FOLLOW_UP
+  CLOSED
+}
+
+enum PressStatus {
+  DRAFT
+  APPROVED
+  DISPATCHED
+}
+
+enum EsignStatus {
+  PENDING
+  SIGNED
+  REVOKED
+}
+
+model User {
+  id                 String    @id @default(uuid())
+  username           String    @unique
+  displayName        String
+  email              String    @unique
+  passwordHash       String
+  role               Role
+  mfaSecretEnc       String?
+  mfaEnabled         Boolean   @default(false)
+  active             Boolean   @default(true)
+  ldapDn             String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  refreshTokens      RefreshToken[]
+  assignedMatters    Matter[]  @relation("Assignee")
+  heldMatters        Matter[]  @relation("Holder")
+  createdMatters     Matter[]  @relation("Creator")
+  versions           MatterVersion[]
+  notes              MatterNote[]
+  routeStepsFrom     RouteStep[] @relation("FromUser")
+  routeStepsTo       RouteStep[] @relation("ToUser")
+  directionsOwned    Direction[] @relation("DirectionOwner")
+  directionsCreated  Direction[] @relation("DirectionCreator")
+  vaultGrants        VaultGrant[]
+  notifications      Notification[]
+  messagesSent       Message[] @relation("MsgFrom")
+  messagesRecv       Message[] @relation("MsgTo")
+  callsLogged        CallRecord[]
+  workItemsOwned     WorkItem[] @relation("WorkOwner")
+  workItemsCreated   WorkItem[] @relation("WorkCreator")
+  meetingsCreated    Meeting[]  @relation("MeetingCreator")
+  speeches           Speech[]
+  pressReleases      PressRelease[]
+  greetings          GreetingCard[]
+  esignRecords       EsignRecord[] @relation("EsignSigner")
+  esignRequested     EsignRecord[] @relation("EsignRequester")
+  scheduleItems      ScheduleItem[]
+  meetingActions     MeetingAction[] @relation("MeetingActionOwner")
+  auditEvents        AuditEvent[]
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String
+  expiresAt DateTime
+  revoked   Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model Matter {
+  id               String         @id @default(uuid())
+  diaryNo          String         @unique
+  subject          String
+  sender           String
+  body             String
+  classification   Classification
+  subjectArea      String
+  priority         String         @default("NORMAL")
+  status           MatterStatus   @default(OPEN)
+  filePasswordHash String?
+  createdById      String
+  createdBy        User           @relation("Creator", fields: [createdById], references: [id])
+  assigneeId       String?
+  assignee         User?          @relation("Assignee", fields: [assigneeId], references: [id])
+  holderId         String?
+  holder           User?          @relation("Holder", fields: [holderId], references: [id])
+  decisionText     String?
+  decisionType     String?
+  closedAt         DateTime?
+  sentForEsign     Boolean        @default(false)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  versions         MatterVersion[]
+  notes            MatterNote[]
+  attachments      Attachment[]
+  routeSteps       RouteStep[]
+  relatedFrom      MatterRelation[] @relation("FromMatter")
+  relatedTo        MatterRelation[] @relation("ToMatter")
+  letters          Letter[]
+  directions       Direction[]
+  vaultGrants      VaultGrant[]
+  calls            CallRecord[]
+  workItems        WorkItem[]
+  esignRecords     EsignRecord[]
+  journeyEvents    JourneyEvent[]
+  messages         Message[]
+}
+
+model MatterVersion {
+  id        String   @id @default(uuid())
+  matterId  String
+  matter    Matter   @relation(fields: [matterId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id])
+  text      String
+  reason    String
+  kind      String   @default("WORKING")
+  hash      String
+  createdAt DateTime @default(now())
+}
+
+model MatterNote {
+  id        String   @id @default(uuid())
+  matterId  String
+  matter    Matter   @relation(fields: [matterId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id])
+  text      String
+  number    Int
+  createdAt DateTime @default(now())
+}
+
+model MatterRelation {
+  id           String @id @default(uuid())
+  fromMatterId String
+  toMatterId   String
+  fromMatter   Matter @relation("FromMatter", fields: [fromMatterId], references: [id], onDelete: Cascade)
+  toMatter     Matter @relation("ToMatter", fields: [toMatterId], references: [id], onDelete: Cascade)
+}
+
+model Attachment {
+  id               String   @id @default(uuid())
+  matterId         String
+  matter           Matter   @relation(fields: [matterId], references: [id], onDelete: Cascade)
+  fileName         String
+  contentType      String
+  sizeBytes        Int
+  storageKey       String
+  sha256           String
+  encrypted        Boolean  @default(false)
+  wrappedDek       String?
+  extractedText    String?
+  createdAt        DateTime @default(now())
+}
+
+model RouteStep {
+  id           String    @id @default(uuid())
+  matterId     String
+  matter       Matter    @relation(fields: [matterId], references: [id], onDelete: Cascade)
+  fromUserId   String?
+  fromUser     User?     @relation("FromUser", fields: [fromUserId], references: [id])
+  toUserId     String
+  toUser       User      @relation("ToUser", fields: [toUserId], references: [id])
+  procedure    String
+  remarks      String?
+  dueDate      DateTime?
+  status       String    @default("AWAITING_RECEIPT")
+  outcome      String?
+  createdAt    DateTime  @default(now())
+  acknowledgedAt DateTime?
+  completedAt  DateTime?
+}
+
+model JourneyEvent {
+  id        String   @id @default(uuid())
+  matterId  String
+  matter    Matter   @relation(fields: [matterId], references: [id], onDelete: Cascade)
+  kind      String
+  summary   String
+  actorId   String?
+  metaJson  String?
+  createdAt DateTime @default(now())
+}
+
+model Letter {
+  id         String   @id @default(uuid())
+  matterId   String
+  matter     Matter   @relation(fields: [matterId], references: [id], onDelete: Cascade)
+  recipient  String
+  text       String
+  status     String   @default("DRAFT")
+  method     String?
+  reference  String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model Direction {
+  id          String          @id @default(uuid())
+  matterId    String?
+  matter      Matter?         @relation(fields: [matterId], references: [id])
+  title       String
+  status      DirectionStatus @default(ISSUED)
+  ownerId     String
+  owner       User            @relation("DirectionOwner", fields: [ownerId], references: [id])
+  createdById String
+  createdBy   User            @relation("DirectionCreator", fields: [createdById], references: [id])
+  dueDate     DateTime?
+  evidence    String?
+  escalateNote String?
+  reminderSentAt DateTime?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  calls       CallRecord[]
+  meetingActions MeetingAction[]
+}
+
+model VaultGrant {
+  id        String   @id @default(uuid())
+  matterId  String
+  matter    Matter   @relation(fields: [matterId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String
+  title     String
+  body      String
+  recordId  String?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model Message {
+  id          String              @id @default(uuid())
+  fromUserId  String
+  fromUser    User                @relation("MsgFrom", fields: [fromUserId], references: [id])
+  toUserId    String
+  toUser      User                @relation("MsgTo", fields: [toUserId], references: [id])
+  text        String              @default("")
+  textEnc     Boolean             @default(true)
+  priority    String              @default("ROUTINE")
+  matterId    String?
+  matter      Matter?             @relation(fields: [matterId], references: [id])
+  read        Boolean             @default(false)
+  createdAt   DateTime            @default(now())
+  attachments MessageAttachment[]
+}
+
+model MessageAttachment {
+  id          String   @id @default(uuid())
+  messageId   String
+  message     Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  fileName    String
+  contentType String
+  sizeBytes   Int
+  storageKey  String
+  sha256      String
+  createdAt   DateTime @default(now())
+}
+
+model CallRecord {
+  id             String     @id @default(uuid())
+  loggedById     String
+  loggedBy       User       @relation(fields: [loggedById], references: [id])
+  direction      String
+  priority       String     @default("NORMAL")
+  status         CallStatus @default(LOGGED)
+  partyName      String
+  organisation   String?
+  phone          String?
+  addressedTo    String?
+  summary        String
+  actionRequired String?
+  followUpNotes  String?
+  matterId       String?
+  matter         Matter?    @relation(fields: [matterId], references: [id])
+  directionId    String?
+  directionRef   Direction? @relation(fields: [directionId], references: [id])
+  meetingId      String?
+  createdAt      DateTime   @default(now())
+}
+
+model WorkItem {
+  id          String        @id @default(uuid())
+  title       String
+  kind        String
+  language    String        @default("en")
+  status      WorkItemStatus @default(DRAFT)
+  classification Classification @default(INTERNAL)
+  text        String
+  ownerId     String
+  owner       User          @relation("WorkOwner", fields: [ownerId], references: [id])
+  createdById String
+  createdBy   User          @relation("WorkCreator", fields: [createdById], references: [id])
+  matterId    String?
+  matter      Matter?       @relation(fields: [matterId], references: [id])
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+}
+
+model Meeting {
+  id              String        @id @default(uuid())
+  title           String
+  status          MeetingStatus @default(REQUESTED)
+  startAt         DateTime?
+  endAt           DateTime?
+  location        String?
+  brief           String?
+  minutes         String?
+  outcome         String?
+  decision        String?
+  screeningStatus String?
+  screeningCnic   String?
+  screeningBadge  String?
+  screeningNotes  String?
+  createdById     String
+  createdBy       User          @relation("MeetingCreator", fields: [createdById], references: [id])
+  archived        Boolean       @default(false)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  actions         MeetingAction[]
+}
+
+model MeetingAction {
+  id          String     @id @default(uuid())
+  meetingId   String
+  meeting     Meeting    @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  title       String
+  ownerName   String
+  ownerId     String?
+  owner       User?      @relation("MeetingActionOwner", fields: [ownerId], references: [id])
+  dueDate     DateTime?
+  directionId String?    @unique
+  direction   Direction? @relation(fields: [directionId], references: [id])
+  createdAt   DateTime   @default(now())
+}
+
+model ScheduleItem {
+  id          String   @id @default(uuid())
+  title       String
+  startAt     DateTime
+  endAt       DateTime
+  location    String?
+  ownerId     String
+  owner       User     @relation(fields: [ownerId], references: [id])
+  createdAt   DateTime @default(now())
+}
+
+model Speech {
+  id        String   @id @default(uuid())
+  title     String
+  body      String
+  language  String   @default("en")
+  status    String   @default("DRAFT")
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id])
+  eventDate DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model PressRelease {
+  id           String      @id @default(uuid())
+  title        String
+  titleUr      String?
+  body         String
+  bodyUr       String?
+  code         String?
+  pidRef       String?
+  wire         String?     @default("PID, PTV News, Radio Pakistan, APP, National Parliamentary Reporters")
+  status       PressStatus @default(DRAFT)
+  authorId     String
+  author       User        @relation(fields: [authorId], references: [id])
+  approvedAt   DateTime?
+  dispatchedAt DateTime?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+}
+
+model GreetingCard {
+  id             String      @id @default(uuid())
+  occasion       String
+  occasionKey    String?
+  occasionDate   DateTime?
+  titleUr        String?
+  recipient      String
+  recipientCount Int         @default(0)
+  message        String
+  messageUr      String?
+  style          String      @default("STATE_GOLD")
+  cardCode       String?
+  dispatchRef    String?
+  status         PressStatus @default(DRAFT)
+  authorId       String
+  author         User        @relation(fields: [authorId], references: [id])
+  approvedAt     DateTime?
+  dispatchedAt   DateTime?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+}
+
+model EsignRecord {
+  id            String      @id @default(uuid())
+  matterId      String
+  matter        Matter      @relation(fields: [matterId], references: [id], onDelete: Cascade)
+  signerId      String
+  signer        User        @relation("EsignSigner", fields: [signerId], references: [id])
+  requestedById String?
+  requestedBy   User?       @relation("EsignRequester", fields: [requestedById], references: [id])
+  status        EsignStatus @default(PENDING)
+  certId        String?     @unique
+  signature     String?
+  provider      String      @default("local_pki")
+  signedAt      DateTime?
+  createdAt     DateTime    @default(now())
+}
+
+model AuditEvent {
+  id         String   @id @default(uuid())
+  seq        Int      @unique @default(autoincrement())
+  actorId    String?
+  actor      User?    @relation(fields: [actorId], references: [id])
+  action     String
+  entityType String
+  entityId   String?
+  summary    String
+  ip         String?
+  userAgent  String?
+  prevHash   String
+  hash       String
+  createdAt  DateTime @default(now())
+}
+
+model SystemSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}

@@ -1,0 +1,24 @@
+{
+  "name": "gov-office-workflow",
+  "private": true,
+  "version": "1.0.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:api": "npm run start:dev -w @gow/api",
+    "dev:web": "npm run dev -w @gow/web",
+    "build": "npm run build -w @gow/shared && npm run build -w @gow/api && npm run build -w @gow/web",
+    "db:generate": "npm run prisma:generate -w @gow/api",
+    "db:migrate": "npm run prisma:migrate -w @gow/api",
+    "db:push": "npm run prisma:push -w @gow/api",
+    "db:seed": "npm run prisma:seed -w @gow/api",
+    "db:local": "npm run db:local -w @gow/api",
+    "smoke": "npm run smoke -w @gow/api",
+    "lint": "npm run lint -w @gow/api && npm run lint -w @gow/web"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
