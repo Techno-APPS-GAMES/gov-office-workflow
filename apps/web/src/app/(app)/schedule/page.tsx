@@ -5,6 +5,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 're
 import { api } from '@/lib/api';
 import { useAuth } from '@/components/AuthProvider';
 import { useToast } from '@/components/Toast';
+import { useLiveRefresh } from '@/lib/live-refresh';
 
 type ScheduleItem = {
   id: string;
@@ -194,6 +195,8 @@ export default function SchedulePage() {
   useEffect(() => {
     load().catch(() => undefined);
   }, [load]);
+
+  useLiveRefresh(load, [load]);
 
   const engagements = useMemo(() => {
     const rows: Engagement[] = [];

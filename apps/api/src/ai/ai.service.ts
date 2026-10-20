@@ -9,15 +9,19 @@ export class AiService {
 
   status() {
     const endpoint = process.env.AI_ENDPOINT || '';
+    const allowExternalTraining =
+      String(process.env.AI_ALLOW_EXTERNAL_TRAINING || 'false').toLowerCase() === 'true';
     return {
       enabled: true,
       mode: endpoint ? 'remote' : 'local_briefing',
       remoteConfigured: Boolean(endpoint),
       model: process.env.AI_MODEL || (endpoint ? null : 'local-grounded-briefing'),
       groundedOnly: true,
+      allowExternalTraining,
+      dataLeavesEnvironment: Boolean(endpoint),
       note: endpoint
-        ? 'Answers use the configured model endpoint with authorized record context only.'
-        : 'Local briefing mode — summarizes authorized records on this server; no external model call.',
+        ? 'Answers use the configured model endpoint with authorized record context only. External training of NA data is forbidden unless AI_ALLOW_EXTERNAL_TRAINING=true (default false).'
+        : 'Local briefing mode — summarizes authorized records on this server; no external model call; no training on NA data.',
     };
   }
 

@@ -27,6 +27,8 @@ import { AiModule } from './ai/ai.module';
 import { HealthModule } from './health/health.module';
 import { StorageModule } from './storage/storage.module';
 import { ExportModule } from './export/export.module';
+import { DakModule } from './dak/dak.module';
+import { SyncModule } from './sync/sync.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { RedisThrottlerStorage } from './common/redis-throttler.storage';
 
@@ -65,6 +67,8 @@ import { RedisThrottlerStorage } from './common/redis-throttler.storage';
     AiModule,
     HealthModule,
     ExportModule,
+    DakModule,
+    SyncModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

@@ -7,6 +7,7 @@ import { api } from '@/lib/api';
 import { useAuth } from '@/components/AuthProvider';
 import { useToast } from '@/components/Toast';
 import { roleAvatar } from '@/lib/avatars';
+import { useLiveRefresh, notifyDataChanged } from '@/lib/live-refresh';
 
 type Person = { id?: string; displayName: string; role?: string };
 type MatterRef = { id: string; diaryNo: string; subject: string };
@@ -17,6 +18,8 @@ type Direction = {
   status: string;
   dueDate?: string | null;
   evidence?: string | null;
+  evidenceFileName?: string | null;
+  evidenceSizeBytes?: number | null;
   escalateNote?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -121,10 +124,64 @@ export default function DirectionsPage() {
   const [items, setItems] = useState<Direction[]>([]);
   const [filter, setFilter] = useState<Filter>('all');
   const [evidence, setEvidence] = useState<Record<string, string>>({});
+  const [evidenceFiles, setEvidenceFiles] = useState<Record<string, File | null>>({});
   const [historyId, setHistoryId] = useState<string | null>(null);
   const [activity, setActivity] = useState<Activity[]>([]);
   const [busy, setBusy] = useState(false);
   const isSpeaker = user?.role === 'SPEAKER' || user?.role === 'ADMIN';
+
+  async function downloadEvidenceFile(directionId: string, fileName: string) {
+    try {
+      const t = localStorage.getItem('gow_access');
+      const res = await fetch(`/api/directions/${directionId}/evidence-file/download`, {
+        headers: t ? { Authorization: `Bearer ${t}` } : {},
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error((await res.text()) || 'Download failed');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      link.click();
+      URL.revokeObjectURL(url);
+      toast.success('Download started');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Download failed');
+    }
+  }
+
+  async function submitEvidence(directionId: string) {
+    const text = (evidence[directionId] || '').trim();
+    const file = evidenceFiles[directionId];
+    if (!text || !file) {
+      toast.error('Evidence text and file are both required');
+      return;
+    }
+    setBusy(true);
+    try {
+      const fd = new FormData();
+      fd.append('evidence', text);
+      fd.append('file', file);
+      const t = localStorage.getItem('gow_access');
+      const res = await fetch(`/api/directions/${directionId}/evidence`, {
+        method: 'POST',
+        headers: t ? { Authorization: `Bearer ${t}` } : {},
+        body: fd,
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error((await res.text()) || 'Submit failed');
+      toast.success('Evidence submitted');
+      setEvidence({ ...evidence, [directionId]: '' });
+      setEvidenceFiles({ ...evidenceFiles, [directionId]: null });
+      notifyDataChanged();
+      await load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed');
+    } finally {
+      setBusy(false);
+    }
+  }
 
   const load = useCallback(async () => {
     setItems(await api<Direction[]>('/directions'));
@@ -133,6 +190,8 @@ export default function DirectionsPage() {
   useEffect(() => {
     load().catch(() => setItems([]));
   }, [load]);
+
+  useLiveRefresh(load, [load]);
 
   const counts = useMemo(() => {
     const overdue = items.filter((d) => d.status === 'OVERDUE').length;
@@ -316,6 +375,23 @@ export default function DirectionsPage() {
                 <div className="dir-evidence-box">
                   <span>Completion evidence</span>
                   <p>{d.evidence}</p>
+                  {d.evidenceFileName && (
+                    <div className="row" style={{ marginTop: 8, gap: 8, flexWrap: 'wrap' }}>
+                      <span className="muted">
+                        Attachment: {d.evidenceFileName}
+                        {d.evidenceSizeBytes != null
+                          ? ` (${d.evidenceSizeBytes.toLocaleString()} bytes)`
+                          : ''}
+                      </span>
+                      <button
+                        type="button"
+                        className="btn"
+                        onClick={() => downloadEvidenceFile(d.id, d.evidenceFileName!)}
+                      >
+                        Download file
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -346,14 +422,7 @@ export default function DirectionsPage() {
                       className="dir-evidence-form"
                       onSubmit={(e: FormEvent) => {
                         e.preventDefault();
-                        run(
-                          () =>
-                            api(`/directions/${d.id}/evidence`, {
-                              method: 'POST',
-                              json: { evidence: evidence[d.id] || '' },
-                            }),
-                          'Evidence submitted',
-                        );
+                        void submitEvidence(d.id);
                       }}
                     >
                       <input
@@ -361,6 +430,16 @@ export default function DirectionsPage() {
                         value={evidence[d.id] || ''}
                         onChange={(e) => setEvidence({ ...evidence, [d.id]: e.target.value })}
                         required
+                      />
+                      <input
+                        type="file"
+                        required
+                        onChange={(e) =>
+                          setEvidenceFiles({
+                            ...evidenceFiles,
+                            [d.id]: e.target.files?.[0] || null,
+                          })
+                        }
                       />
                       <button className="btn primary" type="submit" disabled={busy}>
                         Submit evidence

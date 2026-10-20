@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { api } from '@/lib/api';
 import { useAuth } from '@/components/AuthProvider';
 import { useToast } from '@/components/Toast';
+import { useLiveRefresh } from '@/lib/live-refresh';
 
 type VaultMatter = {
   id: string;
@@ -68,6 +69,8 @@ export default function VaultPage() {
       setEvents([]);
     });
   }, [load]);
+
+  useLiveRefresh(load, [load]);
 
   const stats = useMemo(() => {
     const unlocked = items.filter((m) => (m.vaultGrants?.length || 0) > 0).length;

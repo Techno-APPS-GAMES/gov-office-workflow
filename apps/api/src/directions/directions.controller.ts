@@ -1,8 +1,21 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Res,
+  UploadedFile,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { Role } from '@prisma/client';
+import type { Response } from 'express';
+import { memoryStorage } from 'multer';
 import { DirectionsService } from './directions.service';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { Roles } from '../auth/roles.decorator';
+import { sanitizeFilename } from '../auth/access';
 
 @Controller('directions')
 export class DirectionsController {
@@ -18,18 +31,38 @@ export class DirectionsController {
     return this.directions.activity(id);
   }
 
+  @Get(':id/evidence-file/download')
+  async downloadEvidence(
+    @Param('id') id: string,
+    @CurrentUser() user: { id: string; role: Role },
+    @Res() res: Response,
+  ) {
+    const file = await this.directions.downloadEvidence(id, user);
+    const safe = sanitizeFilename(file.fileName);
+    res.setHeader('Content-Type', file.contentType);
+    res.setHeader('Content-Disposition', `attachment; filename="${safe}"`);
+    res.send(file.bytes);
+  }
+
   @Post(':id/start')
   start(@Param('id') id: string, @CurrentUser() user: { id: string }) {
     return this.directions.start(id, user.id);
   }
 
   @Post(':id/evidence')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: { fileSize: 25 * 1024 * 1024 },
+    }),
+  )
   evidence(
     @Param('id') id: string,
     @Body('evidence') evidence: string,
+    @UploadedFile() file: Express.Multer.File,
     @CurrentUser() user: { id: string },
   ) {
-    return this.directions.evidence(id, user.id, evidence);
+    return this.directions.evidence(id, user.id, evidence, file);
   }
 
   @Post(':id/verify')

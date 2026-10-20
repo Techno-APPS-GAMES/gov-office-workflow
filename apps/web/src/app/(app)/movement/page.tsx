@@ -5,6 +5,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '@/lib/api';
 import { useAuth } from '@/components/AuthProvider';
 import { useToast } from '@/components/Toast';
+import { useLiveRefresh } from '@/lib/live-refresh';
 
 type Person = { id?: string; displayName: string; role?: string };
 type MatterList = {
@@ -89,6 +90,8 @@ export default function MovementPage() {
   const [vaultPw, setVaultPw] = useState('');
   const [busy, setBusy] = useState(false);
   const [confBannerOpen, setConfBannerOpen] = useState(true);
+  const [returnRemarks, setReturnRemarks] = useState('');
+  const [showReturn, setShowReturn] = useState(false);
 
   const loadList = useCallback(async () => {
     const all = await api<MatterList[]>('/files');
@@ -100,12 +103,15 @@ export default function MovementPage() {
     loadList().catch(() => setMatters([]));
   }, [loadList]);
 
-  const loadDetail = useCallback(async (id: string) => {
-    setDetailError('');
-    setDetail(null);
+  const loadDetail = useCallback(async (id: string, soft = false) => {
+    if (!soft) {
+      setDetailError('');
+      setDetail(null);
+    }
     try {
       const m = await api<MatterDetail>(`/files/${id}`);
       setDetail(m);
+      setDetailError('');
       const steps = m.routeSteps || [];
       const active =
         steps.find((s) => s.status === 'AWAITING_RECEIPT' || s.status === 'IN_PROGRESS') ||
@@ -114,13 +120,21 @@ export default function MovementPage() {
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Unable to load matter';
       setDetailError(msg);
-      setDetail(null);
+      if (!soft) setDetail(null);
     }
   }, []);
 
   useEffect(() => {
     if (selectedId) loadDetail(selectedId);
   }, [selectedId, loadDetail]);
+
+  useLiveRefresh(
+    async () => {
+      await loadList();
+      if (selectedId) await loadDetail(selectedId, true);
+    },
+    [loadList, loadDetail, selectedId],
+  );
 
   const stats = useMemo(() => {
     const uid = user?.id;
@@ -189,6 +203,27 @@ export default function MovementPage() {
       await loadDetail(selectedId);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function returnWithRemarks(e: FormEvent) {
+    e.preventDefault();
+    if (!selectedId) return;
+    setBusy(true);
+    try {
+      await api(`/files/${selectedId}/return`, {
+        method: 'POST',
+        json: { remarks: returnRemarks },
+      });
+      toast.success('File returned with remarks');
+      setReturnRemarks('');
+      setShowReturn(false);
+      await loadList();
+      await loadDetail(selectedId);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Return failed');
     } finally {
       setBusy(false);
     }
@@ -399,16 +434,44 @@ export default function MovementPage() {
                   <div className="movement-action-box">
                     <div>
                       <div className="eyebrow">Your next action</div>
-                      <p>Complete your procedure on this file.</p>
+                      <p>Complete your procedure on this file — or return it with remarks.</p>
                     </div>
-                    <button
-                      type="button"
-                      className="btn primary movement-action-btn"
-                      onClick={completeProcedure}
-                      disabled={busy}
-                    >
-                      Complete procedure
-                    </button>
+                    <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+                      <button
+                        type="button"
+                        className="btn primary movement-action-btn"
+                        onClick={completeProcedure}
+                        disabled={busy}
+                      >
+                        Complete procedure
+                      </button>
+                      <button
+                        type="button"
+                        className="btn movement-action-btn"
+                        onClick={() => setShowReturn((v) => !v)}
+                        disabled={busy}
+                      >
+                        Return with remarks
+                      </button>
+                    </div>
+                    {showReturn && (
+                      <form className="grid-form" style={{ marginTop: 12, width: '100%' }} onSubmit={returnWithRemarks}>
+                        <div className="field">
+                          <label>Remarks (min 10 characters)</label>
+                          <textarea
+                            rows={3}
+                            value={returnRemarks}
+                            onChange={(e) => setReturnRemarks(e.target.value)}
+                            minLength={10}
+                            required
+                            placeholder="Why is this file being returned?"
+                          />
+                        </div>
+                        <button className="btn primary" type="submit" disabled={busy}>
+                          Confirm return
+                        </button>
+                      </form>
+                    )}
                   </div>
                 )}
 

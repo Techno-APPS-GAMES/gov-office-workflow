@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { api } from '@/lib/api';
 import { useAuth } from '@/components/AuthProvider';
 import { useToast } from '@/components/Toast';
+import { useLiveRefresh } from '@/lib/live-refresh';
 
 type Desk = {
   kpis: {
@@ -69,6 +70,8 @@ export default function InboxPage() {
   useEffect(() => {
     load().catch((e) => setError(String(e.message || e)));
   }, [load]);
+
+  useLiveRefresh(load, [load]);
 
   async function markRead(id: string) {
     await api(`/inbox/${id}/read`, { method: 'POST' });

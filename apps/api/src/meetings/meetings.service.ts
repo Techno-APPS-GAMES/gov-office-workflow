@@ -292,7 +292,7 @@ export class MeetingsService {
       action: 'MEETING_ACTION_TO_DIRECTION',
       entityType: 'Direction',
       entityId: direction.id,
-      summary: `Meeting action → direction: ${action.title}`,
+      summary: `Meeting action -> direction: ${action.title}`,
     });
 
     return { action: updated, direction };

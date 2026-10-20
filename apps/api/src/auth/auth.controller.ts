@@ -6,6 +6,18 @@ import { Public } from './roles.decorator';
 import { CurrentUser } from './current-user.decorator';
 import { IsOptional, IsString, Length, MinLength } from 'class-validator';
 
+/** Parse TTL like 15m / 7d / 12h into milliseconds. */
+function parseTtlMs(raw: string | undefined, fallbackMs: number) {
+  if (!raw) return fallbackMs;
+  const m = String(raw).trim().match(/^(\d+)(ms|s|m|h|d)$/i);
+  if (!m) return fallbackMs;
+  const n = Number(m[1]);
+  const unit = m[2].toLowerCase();
+  const mult =
+    unit === 'ms' ? 1 : unit === 's' ? 1000 : unit === 'm' ? 60_000 : unit === 'h' ? 3_600_000 : 86_400_000;
+  return n * mult;
+}
+
 class LoginDto {
   @IsString()
   username!: string;
@@ -37,17 +49,20 @@ export class AuthController {
 
   private setCookies(res: Response, accessToken: string, refreshToken: string) {
     const secure = process.env.COOKIE_SECURE === 'true';
+    // Keep cookies aligned with ACCESS_TOKEN_TTL / REFRESH_TOKEN_TTL (demo: long-lived).
+    const accessMs = parseTtlMs(process.env.ACCESS_TOKEN_TTL, 7 * 86400_000);
+    const refreshMs = parseTtlMs(process.env.REFRESH_TOKEN_TTL, 30 * 86400_000);
     res.cookie('access_token', accessToken, {
       httpOnly: true,
       sameSite: 'lax',
       secure,
-      maxAge: 15 * 60 * 1000,
+      maxAge: accessMs,
     });
     res.cookie('refresh_token', refreshToken, {
       httpOnly: true,
       sameSite: 'lax',
       secure,
-      maxAge: 7 * 86400 * 1000,
+      maxAge: refreshMs,
       path: '/api/auth',
     });
   }

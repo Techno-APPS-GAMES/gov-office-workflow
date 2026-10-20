@@ -111,6 +111,7 @@ model User {
   scheduleItems      ScheduleItem[]
   meetingActions     MeetingAction[] @relation("MeetingActionOwner")
   auditEvents        AuditEvent[]
+  dakStamped         DakEntry[] @relation("DakStamp")
 }
 
 model RefreshToken {
@@ -144,6 +145,11 @@ model Matter {
   decisionType     String?
   closedAt         DateTime?
   sentForEsign     Boolean        @default(false)
+  /// AI-assisted summary pending human accept (Tech §6 / §4 human-controlled)
+  aiSummary           String?
+  aiSummaryLang       String?
+  aiSummaryAcceptedAt DateTime?
+  aiSummaryAcceptedById String?
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
   versions         MatterVersion[]
@@ -160,6 +166,7 @@ model Matter {
   esignRecords     EsignRecord[]
   journeyEvents    JourneyEvent[]
   messages         Message[]
+  dakEntries       DakEntry[]
 }
 
 model MatterVersion {
@@ -182,6 +189,8 @@ model MatterNote {
   authorId  String
   author    User     @relation(fields: [authorId], references: [id])
   text      String
+  /// NOTE | PUT_UP | OBSERVATION — append-only noting sheet (S1-02)
+  kind      String   @default("NOTE")
   number    Int
   createdAt DateTime @default(now())
 }
@@ -263,6 +272,12 @@ model Direction {
   createdBy   User            @relation("DirectionCreator", fields: [createdById], references: [id])
   dueDate     DateTime?
   evidence    String?
+  /// Completion evidence file (S1-04)
+  evidenceFileName    String?
+  evidenceContentType String?
+  evidenceSizeBytes   Int?
+  evidenceStorageKey  String?
+  evidenceSha256      String?
   escalateNote String?
   reminderSentAt DateTime?
   createdAt   DateTime        @default(now())
@@ -406,6 +421,39 @@ model ScheduleItem {
   location    String?
   ownerId     String
   owner       User     @relation(fields: [ownerId], references: [id])
+  createdAt   DateTime @default(now())
+}
+
+/// R&I receive / despatch register (NA circular-style stamp fields)
+model DakEntry {
+  id               String    @id @default(uuid())
+  direction        String    // IN | OUT
+  branchName       String    @default("Speaker Office")
+  fromName         String
+  fromDesignation  String?
+  toName           String
+  toDesignation    String?
+  channel          String    @default("HAND") // HAND | POST | EMAIL | INTERNAL
+  subject          String
+  classification   String?
+  diaryNo          String?
+  matterId         String?
+  matter           Matter?   @relation(fields: [matterId], references: [id])
+  reference        String?
+  stampedAt        DateTime  @default(now())
+  stampedById      String
+  stampedBy        User      @relation("DakStamp", fields: [stampedById], references: [id])
+  createdAt        DateTime  @default(now())
+}
+
+/// Multi-step routing presets (Tech / research file movement)
+model RouteTemplate {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  /// JSON array: [{ "toRole": "SECRETARY_GENERAL", "procedure": "Examine and advise" }, ...]
+  stepsJson   String
+  active      Boolean  @default(true)
   createdAt   DateTime @default(now())
 }
 

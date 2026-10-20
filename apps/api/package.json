@@ -13,7 +13,8 @@
     "prisma:push": "prisma db push",
     "prisma:seed": "tsx prisma/seed.ts",
     "db:local": "tsx scripts/local-pg.ts",
-    "smoke": "tsx scripts/smoke.ts"
+    "smoke": "tsx scripts/smoke.ts",
+    "prepare:testers": "tsx scripts/prepare-tester-pack.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

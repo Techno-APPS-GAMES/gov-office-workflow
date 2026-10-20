@@ -1,5 +1,7 @@
 'use client';
 
+import { notifyDataChanged } from '@/lib/workspace-events';
+
 const API = '/api';
 
 export type SessionUser = {
@@ -14,6 +16,11 @@ export type SessionUser = {
 function token(): string | null {
   if (typeof window === 'undefined') return null;
   return localStorage.getItem('gow_access');
+}
+
+function refreshToken(): string | null {
+  if (typeof window === 'undefined') return null;
+  return localStorage.getItem('gow_refresh');
 }
 
 export function setTokens(access: string, refresh: string) {
@@ -40,9 +47,37 @@ export function loadUser(): SessionUser | null {
   }
 }
 
+let refreshInFlight: Promise<boolean> | null = null;
+
+async function tryRefreshAccessToken(): Promise<boolean> {
+  if (refreshInFlight) return refreshInFlight;
+  refreshInFlight = (async () => {
+    const rt = refreshToken();
+    if (!rt) return false;
+    try {
+      const res = await fetch(`${API}/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ refreshToken: rt }),
+      });
+      if (!res.ok) return false;
+      const data = (await res.json()) as { accessToken?: string; refreshToken?: string };
+      if (!data.accessToken || !data.refreshToken) return false;
+      setTokens(data.accessToken, data.refreshToken);
+      return true;
+    } catch {
+      return false;
+    } finally {
+      refreshInFlight = null;
+    }
+  })();
+  return refreshInFlight;
+}
+
 export async function api<T = unknown>(
   path: string,
-  opts: RequestInit & { json?: unknown } = {},
+  opts: RequestInit & { json?: unknown; _retried?: boolean } = {},
 ): Promise<T> {
   const headers: Record<string, string> = {
     ...(opts.headers as Record<string, string>),
@@ -60,6 +95,15 @@ export async function api<T = unknown>(
     body,
     credentials: 'include',
   });
+
+  // Soft session: on 401 try refresh once instead of forcing sign-out.
+  if (res.status === 401 && !opts._retried && !path.startsWith('/auth/login') && !path.startsWith('/auth/refresh')) {
+    const ok = await tryRefreshAccessToken();
+    if (ok) {
+      return api<T>(path, { ...opts, _retried: true });
+    }
+  }
+
   if (!res.ok) {
     let msg = res.statusText;
     let code: string | undefined;
@@ -71,7 +115,6 @@ export async function api<T = unknown>(
       msg = j.message || j.error || JSON.stringify(j);
       if (Array.isArray(msg)) msg = msg.join(', ');
       if (typeof msg === 'object' && msg && 'message' in msg) {
-        // Nest ConflictException may nest fields under message
         const nested = msg as Record<string, unknown>;
         payload = { ...payload, ...nested };
         msg = String(nested.message || 'Request failed');
@@ -89,6 +132,16 @@ export async function api<T = unknown>(
     err.payload = payload;
     throw err;
   }
+  const method = (opts.method || 'GET').toUpperCase();
+  const isMutating =
+    method !== 'GET' &&
+    method !== 'HEAD' &&
+    !path.startsWith('/auth/') &&
+    !path.startsWith('/sync/');
+  if (isMutating) {
+    notifyDataChanged();
+  }
+
   if (res.status === 204) return undefined as T;
   const ct = res.headers.get('content-type') || '';
   if (ct.includes('application/json')) return res.json();

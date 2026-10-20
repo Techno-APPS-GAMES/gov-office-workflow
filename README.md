@@ -21,12 +21,26 @@ npm run dev:web
 - Web: http://localhost:3000  
 - API: http://localhost:4000/api/health  
 
-Seed users (password `ChangeMe!Office1`): `speaker`, `secgen`, `specsec`, `dgit`, `admin`.  
+Seed users (password from `SEED_PASSWORD`, default `ChangeMe!Office1`): `speaker`, `secgen`, `specsec`, `dgit`, `admin`.  
+Re-run `npm run db:seed` after pulling seed changes.  
 Enroll MFA on first login when `MFA_REQUIRED=true`.  
+Demo may set `MFA_SKIP_LOGIN_TOTP=true` / `DEMO_WEAK_PASSWORDS=true` — **forbidden in pilot** (`PILOT_MODE=true` or `NODE_ENV=production`).  
 MinIO is optional in development — the API falls back to `.local-storage/`.
+
+## Smoke test
+
+With API running on :4000 and users seeded (`ChangeMe!Office1`):
+
+```bash
+npm run smoke -w @gow/api
+```
+
+Covers Path A, confidential Path B + Direction evidence file, related link, return-with-remarks, and close.
 
 ## Docs
 
 - [SECURITY.md](docs/SECURITY.md)
 - [RUNBOOK.md](docs/RUNBOOK.md)
 - [THREAT_MODEL.md](docs/THREAT_MODEL.md)
+- [Sprint 1 backlog](docs/SPRINT1_BACKLOG.md)
+- [Pilot env example](deploy/.env.pilot.example)

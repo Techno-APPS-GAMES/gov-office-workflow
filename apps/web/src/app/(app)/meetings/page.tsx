@@ -4,6 +4,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '@/lib/api';
 import { useAuth } from '@/components/AuthProvider';
 import { useToast } from '@/components/Toast';
+import { useLiveRefresh } from '@/lib/live-refresh';
 
 type MeetingAction = {
   id: string;
@@ -150,6 +151,8 @@ export default function MeetingsPage() {
       .then((u) => setStaff(u.map((x) => ({ id: x.id, displayName: x.displayName, role: x.role }))))
       .catch(() => setStaff([]));
   }, [load]);
+
+  useLiveRefresh(load, [load]);
 
   const { upcoming, pending, past } = useMemo(() => {
     const today = startOfToday();

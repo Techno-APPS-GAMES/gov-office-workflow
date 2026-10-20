@@ -14,6 +14,7 @@ const ICONS: Record<string, string> = {
   inbox: '✉',
   messages: '💬',
   files: '▤',
+  registry: '📮',
   vault: '🔒',
   movement: '⇄',
   directions: '◎',

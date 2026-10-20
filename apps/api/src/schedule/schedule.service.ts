@@ -8,6 +8,7 @@ import {
 import { MeetingStatus, Role } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 export type BusySlot = {
   id: string;
@@ -32,6 +33,7 @@ export class ScheduleService {
   constructor(
     private prisma: PrismaService,
     private audit: AuditService,
+    private notifications: NotificationsService,
   ) {}
 
   list(user: { id: string; role: Role }, ownerId?: string) {
@@ -262,6 +264,35 @@ export class ScheduleService {
       entityId: item.id,
       summary: `Diary: ${item.title}${conflicts.length ? ' (forced over conflict)' : ''}`,
     });
+
+    const when = `${startAt.toLocaleString()} – ${endAt.toLocaleString()}`;
+    const forcedNote = conflicts.length ? ' (booked over a conflict)' : '';
+    if (ownerId !== actor.id) {
+      await this.notifications.create(
+        ownerId,
+        'SCHEDULE_CHANGE',
+        'Diary updated',
+        `${actor.role}: added "${item.title}" at ${when}${forcedNote}`,
+        item.id,
+      );
+    }
+    if (conflicts.length) {
+      const speakers = await this.prisma.user.findMany({
+        where: { role: { in: [Role.SPEAKER, Role.SECRETARY_GENERAL] }, active: true },
+        select: { id: true },
+      });
+      for (const s of speakers) {
+        if (s.id === actor.id || s.id === ownerId) continue;
+        await this.notifications.create(
+          s.id,
+          'SCHEDULE_CHANGE',
+          'Schedule conflict override',
+          `"${item.title}" forced onto diary at ${when}`,
+          item.id,
+        );
+      }
+    }
+
     return {
       item,
       conflictForced: conflicts.length > 0,
@@ -290,6 +321,15 @@ export class ScheduleService {
       entityId: id,
       summary: `Removed diary item: ${item.title}`,
     });
+    if (item.ownerId !== user.id) {
+      await this.notifications.create(
+        item.ownerId,
+        'SCHEDULE_CHANGE',
+        'Diary item removed',
+        `${user.role} removed "${item.title}" from your diary`,
+        id,
+      );
+    }
     return { ok: true };
   }
 }

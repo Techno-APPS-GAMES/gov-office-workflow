@@ -54,8 +54,11 @@ export class AuthService {
     if (!ok) throw new UnauthorizedException('Invalid credentials');
 
     const mfaRequired = process.env.MFA_REQUIRED !== 'false';
-    // TEMP: skip login TOTP when MFA_SKIP_LOGIN_TOTP=true (demo convenience)
-    const skipLoginTotp = process.env.MFA_SKIP_LOGIN_TOTP === 'true';
+    // Demo-only: MFA_SKIP_LOGIN_TOTP=true. Ignored in pilot/production (S1-05).
+    const pilotHardened =
+      process.env.PILOT_MODE === 'true' || process.env.NODE_ENV === 'production';
+    const skipLoginTotp =
+      process.env.MFA_SKIP_LOGIN_TOTP === 'true' && !pilotHardened;
     if (mfaRequired && user.mfaEnabled && !skipLoginTotp) {
       if (!totpCode || !user.mfaSecretEnc) throw new UnauthorizedException('MFA code required');
       const secret = this.crypto.decryptSecret(user.mfaSecretEnc);
@@ -93,18 +96,19 @@ export class AuthService {
   }
 
   async issueTokens(userId: string) {
+    const accessTtl = process.env.ACCESS_TOKEN_TTL || '7d';
     const accessToken = await this.jwt.signAsync(
       { sub: userId },
-      { secret: this.accessSecret(), expiresIn: (process.env.ACCESS_TOKEN_TTL || '15m') as `${number}m` },
+      { secret: this.accessSecret(), expiresIn: accessTtl as `${number}d` },
     );
     const refreshRaw = randomBytes(48).toString('hex');
     const tokenHash = this.crypto.sha256(refreshRaw);
-    const days = 7;
+    const refreshMs = parseEnvTtlMs(process.env.REFRESH_TOKEN_TTL, 30 * 86400_000);
     await this.prisma.refreshToken.create({
       data: {
         userId,
         tokenHash,
-        expiresAt: new Date(Date.now() + days * 86400_000),
+        expiresAt: new Date(Date.now() + refreshMs),
       },
     });
     return { accessToken, refreshToken: refreshRaw };
@@ -179,4 +183,15 @@ export class AuthService {
     });
     return { ok: true };
   }
+}
+
+function parseEnvTtlMs(raw: string | undefined, fallbackMs: number) {
+  if (!raw) return fallbackMs;
+  const m = String(raw).trim().match(/^(\d+)(ms|s|m|h|d)$/i);
+  if (!m) return fallbackMs;
+  const n = Number(m[1]);
+  const unit = m[2].toLowerCase();
+  const mult =
+    unit === 'ms' ? 1 : unit === 's' ? 1000 : unit === 'm' ? 60_000 : unit === 'h' ? 3_600_000 : 86_400_000;
+  return n * mult;
 }

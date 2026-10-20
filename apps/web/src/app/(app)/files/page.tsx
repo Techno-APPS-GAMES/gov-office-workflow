@@ -1,13 +1,14 @@
 'use client';
 
 import Link from 'next/link';
-import { FormEvent, Suspense, useEffect, useMemo, useState } from 'react';
+import { FormEvent, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { ROLE_META, type Role } from '@gow/shared';
 import { api } from '@/lib/api';
 import { useAuth } from '@/components/AuthProvider';
 import { useToast } from '@/components/Toast';
 import { roleAvatar } from '@/lib/avatars';
+import { useLiveRefresh } from '@/lib/live-refresh';
 
 type Matter = {
   id: string;
@@ -94,18 +95,20 @@ function FilesPageInner() {
     if (search.get('register') === '1') setShowForm(true);
   }, [search]);
 
-  async function load() {
+  const load = useCallback(async () => {
     const [m, l] = await Promise.all([
       api<Matter[]>('/files'),
       api<Letter[]>('/files/letters/dispatched').catch(() => [] as Letter[]),
     ]);
     setMatters(m);
     setLetters(l);
-  }
+  }, []);
 
   useEffect(() => {
     load().catch((e) => setError(String(e.message || e)));
-  }, []);
+  }, [load]);
+
+  useLiveRefresh(load, [load]);
 
   const counts = useMemo(() => {
     const open = matters.filter((m) => m.status !== 'CLOSED').length;

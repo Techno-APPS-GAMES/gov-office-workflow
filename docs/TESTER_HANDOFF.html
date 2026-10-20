@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Self-guided testing — Government Office Workflow</title>
+  <style>
+    :root {
+      --ink: #1a2332;
+      --muted: #5c6b7a;
+      --line: #d8dee6;
+      --paper: #f7f5f1;
+      --card: #ffffff;
+      --pine: #1e4d3a;
+      --pine-soft: #e8f2ec;
+      --amber: #8a5a12;
+      --amber-soft: #faf0e0;
+      --sky: #e8eef6;
+      --ok: #1e5c3a;
+      --shadow: 0 1px 2px rgba(26, 35, 50, 0.06), 0 8px 24px rgba(26, 35, 50, 0.06);
+      --font: "Segoe UI", system-ui, -apple-system, sans-serif;
+      --mono: "Cascadia Code", Consolas, monospace;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      font-family: var(--font);
+      color: var(--ink);
+      background:
+        radial-gradient(ellipse 70% 40% at 0% 0%, #e4efe8, transparent 55%),
+        radial-gradient(ellipse 50% 30% at 100% 0%, #efe8dc, transparent 50%),
+        var(--paper);
+      line-height: 1.55;
+    }
+    a { color: var(--pine); }
+    code {
+      font-family: var(--mono);
+      font-size: 0.88em;
+      background: #eef2f6;
+      padding: 0.12em 0.4em;
+      border-radius: 4px;
+    }
+    .wrap { max-width: 900px; margin: 0 auto; padding: 24px 18px 96px; }
+
+    .hero {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      box-shadow: var(--shadow);
+      padding: 28px 28px 24px;
+      margin-bottom: 16px;
+    }
+    .eyebrow {
+      font-size: 0.72rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--pine);
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+    h1 { margin: 0 0 10px; font-size: clamp(1.45rem, 3vw, 1.9rem); letter-spacing: -0.02em; }
+    .hero p { margin: 0; color: var(--muted); }
+    .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+    .btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      border: 1px solid var(--line); background: #fff; color: var(--ink);
+      padding: 8px 14px; border-radius: 999px; font-size: 0.9rem;
+      text-decoration: none; cursor: pointer;
+    }
+    .btn:hover { border-color: var(--pine); color: var(--pine); }
+    .btn.primary { background: var(--pine); border-color: var(--pine); color: #fff; }
+    .btn.primary:hover { filter: brightness(1.06); color: #fff; }
+
+    .toc {
+      position: sticky; top: 0; z-index: 10;
+      display: flex; flex-wrap: wrap; gap: 6px;
+      background: rgba(247,245,241,0.94); backdrop-filter: blur(8px);
+      border: 1px solid var(--line); border-radius: 10px;
+      padding: 10px; margin-bottom: 18px;
+    }
+    .toc a {
+      text-decoration: none; font-size: 0.8rem; color: var(--muted);
+      padding: 5px 10px; border-radius: 999px;
+    }
+    .toc a:hover { background: var(--pine-soft); color: var(--pine); }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      box-shadow: var(--shadow);
+      padding: 22px 24px;
+      margin-bottom: 16px;
+    }
+    .card h2 { margin: 0 0 6px; font-size: 1.2rem; }
+    .lead { margin: 0 0 14px; color: var(--muted); font-size: 0.95rem; }
+
+    .creds {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 10px;
+    }
+    .cred {
+      background: var(--pine-soft);
+      border: 1px solid #c5d9cc;
+      border-radius: 10px;
+      padding: 12px;
+    }
+    .cred.vault { background: var(--amber-soft); border-color: #e6d2a8; }
+    .cred .lbl {
+      font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em;
+      color: var(--muted); font-weight: 700;
+    }
+    .cred .val { font-family: var(--mono); font-size: 0.95rem; margin-top: 4px; word-break: break-all; }
+    .cred button {
+      margin-top: 8px; border: none; background: none; color: var(--pine);
+      cursor: pointer; font-size: 0.75rem; text-decoration: underline; padding: 0;
+    }
+
+    table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+    th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    th { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); background: #f3f5f7; }
+    .scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; }
+
+    .flow {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      overflow: hidden;
+      margin-bottom: 16px;
+      background: var(--card);
+      box-shadow: var(--shadow);
+    }
+    .flow > summary {
+      list-style: none; cursor: pointer;
+      padding: 16px 18px;
+      background: linear-gradient(180deg, #f8faf9, #f1f4f2);
+      display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+      font-weight: 700;
+    }
+    .flow > summary::-webkit-details-marker { display: none; }
+    .flow-num {
+      background: var(--pine); color: #fff;
+      width: 28px; height: 28px; border-radius: 50%;
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 0.85rem;
+    }
+    .flow-meta { font-weight: 500; color: var(--muted); font-size: 0.85rem; width: 100%; margin-top: 2px; }
+    .flow-body { padding: 8px 14px 18px; }
+
+    .step {
+      display: grid;
+      grid-template-columns: 40px 1fr;
+      gap: 10px;
+      padding: 14px 8px;
+      border-bottom: 1px dashed var(--line);
+    }
+    .step:last-child { border-bottom: none; }
+    .step-n {
+      width: 32px; height: 32px; border-radius: 50%;
+      background: var(--sky); color: var(--ink);
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: 0.85rem;
+    }
+    .step h3 { margin: 0 0 6px; font-size: 1rem; }
+    .step p { margin: 0 0 8px; font-size: 0.92rem; }
+    .who {
+      display: inline-block;
+      background: var(--pine-soft); color: var(--pine);
+      font-size: 0.75rem; font-weight: 700;
+      padding: 2px 8px; border-radius: 999px; margin-bottom: 8px;
+    }
+    .expect {
+      background: #eef8f1;
+      border-left: 3px solid var(--ok);
+      padding: 8px 12px;
+      border-radius: 0 8px 8px 0;
+      font-size: 0.88rem;
+      margin-top: 8px;
+    }
+    .data {
+      background: #fafbfc;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px 12px;
+      margin: 8px 0;
+      font-size: 0.88rem;
+    }
+    .data .row {
+      display: grid;
+      grid-template-columns: 110px 1fr auto;
+      gap: 8px;
+      align-items: start;
+      padding: 6px 0;
+      border-bottom: 1px solid #eef1f4;
+    }
+    .data .row:last-child { border-bottom: none; }
+    .data .k { color: var(--muted); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 700; padding-top: 2px; }
+    .data .v { font-family: var(--mono); font-size: 0.86rem; white-space: pre-wrap; word-break: break-word; }
+    .data button {
+      border: 1px solid var(--line); background: #fff; border-radius: 6px;
+      font-size: 0.72rem; padding: 4px 8px; cursor: pointer; color: var(--pine);
+      white-space: nowrap;
+    }
+    .data button:hover { border-color: var(--pine); }
+    @media (max-width: 560px) {
+      .data .row { grid-template-columns: 1fr; }
+    }
+
+    .mark {
+      display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+      margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--line);
+    }
+    .mark label {
+      font-size: 0.85rem; border: 1px solid var(--line); border-radius: 999px;
+      padding: 4px 10px; cursor: pointer; background: #fafbfc;
+    }
+    .mark label:has(input:checked) { background: var(--pine-soft); border-color: var(--pine); }
+    .mark textarea {
+      width: 100%; min-height: 44px; margin-top: 4px;
+      border: 1px solid var(--line); border-radius: 8px; padding: 8px; font: inherit;
+    }
+
+    .callout {
+      border-left: 4px solid var(--pine);
+      background: var(--pine-soft);
+      padding: 12px 14px;
+      border-radius: 0 8px 8px 0;
+      font-size: 0.92rem;
+      margin-top: 12px;
+    }
+    .callout.warn { border-left-color: var(--amber); background: var(--amber-soft); }
+
+    footer { text-align: center; color: var(--muted); font-size: 0.85rem; margin-top: 24px; }
+
+    @media print {
+      .toc, .actions, .btn, .data button, .mark { display: none !important; }
+      .flow { break-inside: avoid; box-shadow: none; }
+      details.flow { open: true; }
+      details[open] > summary ~ * { display: block !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="hero">
+      <div class="eyebrow">Self-guided UAT</div>
+      <h1>Use the software yourself — step by step</h1>
+      <p>
+        Follow each flow in order. Type the <strong>exact sample data</strong> shown in the grey boxes
+        (use Copy). Tick Done when the “You should see” check passes. Switch accounts when the flow says so.
+      </p>
+      <div class="actions">
+        <a class="btn primary" href="https://office-workflow-preview.walkwell.pk/login" target="_blank" rel="noopener">Open login</a>
+        <a class="btn" href="#start">Start Flow 1</a>
+        <button class="btn" type="button" id="expand-all">Expand all flows</button>
+        <button class="btn" type="button" onclick="window.print()">Print / PDF</button>
+        <button class="btn" type="button" id="copy-results">Copy my results</button>
+      </div>
+    </header>
+
+    <nav class="toc">
+      <a href="#access">Logins</a>
+      <a href="#flow1">1 File path</a>
+      <a href="#flow2">2 Confidential</a>
+      <a href="#flow3">3 Dak</a>
+      <a href="#flow4">4 Meeting</a>
+      <a href="#flow5">5 Schedule</a>
+      <a href="#flow6">6 Search Urdu</a>
+      <a href="#feedback">Feedback</a>
+    </nav>
+
+    <section class="card" id="access">
+      <h2>Before you start</h2>
+      <p class="lead">Open the app, then keep this guide beside it (second screen or split window).</p>
+      <div class="creds">
+        <div class="cred">
+          <div class="lbl">Web address</div>
+          <div class="val">https://office-workflow-preview.walkwell.pk/login</div>
+          <button type="button" data-copy="https://office-workflow-preview.walkwell.pk/login">Copy</button>
+        </div>
+        <div class="cred">
+          <div class="lbl">Password (all users)</div>
+          <div class="val">Tester@Office1</div>
+          <button type="button" data-copy="Tester@Office1">Copy</button>
+        </div>
+        <div class="cred vault">
+          <div class="lbl">Vault password (Flow 2 only)</div>
+          <div class="val">VaultTest!01</div>
+          <button type="button" data-copy="VaultTest!01">Copy</button>
+        </div>
+      </div>
+      <div class="scroll" style="margin-top:14px">
+        <table>
+          <thead><tr><th>Username</th><th>Role</th><th>When to use</th></tr></thead>
+          <tbody>
+            <tr><td><code>speaker</code></td><td>Speaker</td><td>Decide, approve, verify, vault</td></tr>
+            <tr><td><code>secgen</code></td><td>Secretary General</td><td>Receive files, dak, meetings</td></tr>
+            <tr><td><code>specsec</code></td><td>Special Secretary</td><td>Directions, put-up, speeches</td></tr>
+            <tr><td><code>admin</code></td><td>Admin</td><td>Audit check at the end</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="callout">
+        MFA / “Enable authenticator” should <strong>not</strong> appear. If it does, stop and tell the team.
+        Optional shortcut data (<code>TC-F-…</code>) may already exist — for these flows, <strong>create new records yourself</strong> using the sample text below.
+      </div>
+    </section>
+
+    <!-- FLOW 1 -->
+    <details class="flow" id="flow1" open>
+      <summary>
+        <span class="flow-num">1</span>
+        File journey: register → route → note → decide → direction → evidence
+        <span class="flow-meta">~20–25 min · Roles: speaker → secgen → speaker → specsec → speaker</span>
+      </summary>
+      <div class="flow-body" id="start">
+
+        <div class="step">
+          <div class="step-n">1</div>
+          <div>
+            <span class="who">Login as speaker</span>
+            <h3>Register a new internal file</h3>
+            <p>Go to <strong>Files</strong> → register / new matter. Fill fields using this data:</p>
+            <div class="data">
+              <div class="row"><span class="k">Subject</span><span class="v" data-v>UAT-FLOW1 Invitation to Cultural Evening — Protocol advice required</span><button type="button" class="cp">Copy</button></div>
+              <div class="row"><span class="k">Sender</span><span class="v" data-v>Protocol Wing, National Assembly</span><button type="button" class="cp">Copy</button></div>
+              <div class="row"><span class="k">Body</span><span class="v" data-v>The Protocol Wing requests advice on whether the Honourable Speaker should attend the Cultural Evening on 15 November. Kindly examine seating, security, and political optics, and put up a short recommendation with one attachment if available.</span><button type="button" class="cp">Copy</button></div>
+              <div class="row"><span class="k">Classification</span><span class="v" data-v>INTERNAL</span><button type="button" class="cp">Copy</button></div>
+              <div class="row"><span class="k">Subject area</span><span class="v" data-v>Protocol</span><button type="button" class="cp">Copy</button></div>
+              <div class="row"><span class="k">Priority</span><span class="v" data-v>NORMAL</span><button type="button" class="cp">Copy</button></div>
+            </div>
+            <p>Optional: attach any small <code>.txt</code> or <code>.pdf</code> named <code>protocol-note.txt</code>.</p>
+            <div class="expect"><strong>You should see:</strong> A new diary number (e.g. GOW-2026-xxxxx). File opens with Journey showing Registered.</div>
+            <div class="mark" data-id="F1-S1"></div>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-n">2</div>
+          <div>
+            <span class="who">Still speaker</span>
+            <h3>Add a noting para + generate summary</h3>
+            <p>On the same file → <strong>Notes</strong> tab → add note, then on Overview generate EN summary and <strong>Accept</strong>.</p>
+            <div class="data">
+              <div class="row"><span class="k">Note text</span><span class="v" data-v>Para 1: Registered for UAT Flow 1. Please route to Secretary General for examine and advise before Speaker put-up.</span><button type="button" class="cp">Copy</button></div>
+            </div>
+            <div class="expect"><strong>You should see:</strong> Note numbered on noting sheet; summary accepted timestamp; put-up checklist improves.</div>
+            <div class="mark" data-id="F1-S2"></div>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-n">3</div>
+          <div>
+            <span class="who">Still speaker</span>
+            <h3>Route to Secretary General</h3>
+            <p>On Overview → Route. Choose user <strong>Secretary General</strong> (secgen).</p>
+            <div class="data">
+              <div class="row"><span class="k">Procedure</span><span class="v" data-v>Examine and advise on attendance and protocol</span><button type="button" class="cp">Copy</button></div>
+              <div class="row"><span class="k">Due date</span><span class="v" data-v>(pick a date 3 days from today)</span><button type="button" class="cp" hidden></button></div>
+            </div>
+            <p>Or use route template <strong>Sec Gen examine</strong> if listed.</p>
+            <div class="expect"><strong>You should see:</strong> Status awaiting receipt; holder = Secretary General; Journey shows route.</div>
+            <div class="mark" data-id="F1-S3"></div>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-n">4</div>
+          <div>
+            <span class="who">Logout → login as secgen</span>
+            <h3>Acknowledge, note, complete procedure</h3>
+            <p>Open the file from Files / Movement / notification. Click <strong>Acknowledge</strong>, add noting, then <strong>Complete procedure</strong>.</p>
+            <div class="data">
+              <div class="row"><span class="k">Noting</span><span class="v" data-v>Examined. Attendance recommended subject to security clearance. Suggest Spec Sec prepare one-page put-up.</span><button type="button" class="cp">Copy</button></div>
+              <div class="row"><span class="k">Outcome</span><span class="v" data-v>Procedure complete — recommend attendance with VIP seating plan.</span><button type="button" class="cp">Copy</button></div>
+            </div>
+            <div class="expect"><strong>You should see:</strong> File moves toward decision / Speaker; your noting appears on the sheet.</div>
+            <div class="mark" data-id="F1-S4"></div>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-n">5</div>
+          <div>
+            <span class="who">Logout → login as speaker</span>
+            <h3>Record decision and issue a direction</h3>
+            <p>Open the same file → Decision / Direction section.</p>
+            <div class="data">
+              <div class="row"><span class="k">Decision type</span><span class="v" data-v>DIRECTION</span><button type="button" class="cp">Copy</button></div>
+              <div class="row"><span class="k">Decision text</span><span class="v" data-v>Approved in principle. Issue direction for a one-page briefing and seating plan.</span><button type="button" class="cp">Copy</button></div>
+              <div class="row"><span class="k">Direction title</span><span class="v" data-v>UAT-FLOW1 Prepare one-page Cultural Evening briefing + seating plan</span><button type="button" class="cp">Copy</button></div>
+              <div class="row"><span class="k">Owner</span><span class="v" data-v>Special Secretary (specsec)</span><button type="button" class="cp">Copy</button></div>
+              <div class="row"><span class="k">Due date</span><span class="v" data-v>(pick a date 5 days from today)</span><button type="button" class="cp" hidden></button></div>
+            </div>
+            <div class="expect"><strong>You should see:</strong> Direction created; Spec Sec notified; Journey shows decision.</div>
+            <div class="mark" data-id="F1-S5"></div>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-n">6</div>
+          <div>
+            <span class="who">Logout → login as specsec</span>
+            <h3>Start direction and submit evidence</h3>
+            <p>Open <strong>Directions</strong> → find your UAT-FLOW1 title → Start → submit evidence.</p>
+            <div class="data">
+              <div class="row"><span class="k">Evidence text</span><span class="v" data-v>Briefing prepared: recommend attendance; VIP row A; security liaison Protocol Wing. Attachment: seating-draft.txt</span><button type="button" class="cp">Copy</button></div>
+            </div>
+            <p>Attach a small file (create a text file on your PC if needed).</p>
+            <div class="expect"><strong>You should see:</strong> Status Evidence submitted (or similar).</div>
+            <div class="mark" data-id="F1-S6"></div>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-n">7</div>
+          <div>
+            <span class="who">Logout → login as speaker</span>
+            <h3>Verify evidence and close the file</h3>
+            <p>Directions → verify / approve the evidence. Then open the matter and <strong>Close</strong> with an outcome.</p>
+            <div class="data">
+              <div class="row"><span class="k">Close outcome</span><span class="v" data-v>UAT Flow 1 complete — briefing accepted; attendance confirmed for Cultural Evening.</span><button type="button" class="cp">Copy</button></div>
+            </div>
+            <div class="expect"><strong>You should see:</strong> Direction closed/verified; matter CLOSED; Journey shows full trail.</div>
+            <div class="mark" data-id="F1-S7"></div>
+          </div>
+        </div>
+      </div>
+    </details>
+
+    <!-- FLOW 2 -->
+    <details class="flow" id="flow2">
+      <summary>
+        <span class="flow-num">2</span>
+        Confidential file + vault unlock + download reason
+        <span class="flow-meta">~10 min · Roles: speaker (then optional secgen)</span>
+      </summary>
+      <div class="flow-body">
+        <div class="step">
+          <div class="step-n">1</div>
+          <div>
+            <span class="who">Login as speaker</span>
+            <h3>Register a confidential matter</h3>
+            <div class="data">
+              <div class="row"><span class="k">Subject</span><span class="v" data-v>UAT-FLOW2 Confidential note — intergovernmental courtesy points</span><button type="button" class="cp">Copy</button></div>
+              <div class="row"><span class="k">Sender</span><span class="v" data-v>Ministry Desk (Confidential)</span><button type="button" class="cp">Copy</button></div>
+              <div class="row"><span class="k">Body</span><span class="v" data-v>CONFIDENTIAL UAT. Handle under vault. Talking points for restricted bilateral courtesy call. Do not circulate beyond authorised officers.</span><button type="button" class="cp">Copy</button></div>
+              <div class="row"><span class="k">Classification</span><span class="v" data-v>CONFIDENTIAL</span><button type="button" class="cp">Copy</button></div>
+              <div class="row"><span class="k">File password</span><span class="v" data-v>VaultTest!01</span><button type="button" class="cp">Copy</button></div>
+            </div>
+            <div class="expect"><strong>You should see:</strong> Matter created as Confidential; vault controls appear.</div>
+            <div class="mark" data-id="F2-S1"></div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-n">2</div>
+          <div>
+            <span class="who">Still speaker</span>
+            <h3>Unlock, attach, download with reason</h3>
+            <p>Unlock vault with <code>VaultTest!01</code>. Attach a tiny file. Click Download — when asked for reason, try too short first, then a proper reason.</p>
+            <div class="data">
+              <div class="row"><span class="k">Bad reason</span><span class="v" data-v>ok</span><button type="button" class="cp">Copy</button></div>
+              <div class="row"><span class="k">Good reason</span><span class="v" data-v>Official review for bilateral courtesy call preparation</span><button type="button" class="cp">Copy</button></div>
+            </div>
+            <div class="expect"><strong>You should see:</strong> Short reason rejected; good reason downloads successfully.</div>
+            <div class="mark" data-id="F2-S2"></div>
+          </div>
+        </div>
+      </div>
+    </details>
+
+    <!-- FLOW 3 -->
+    <details class="flow" id="flow3">
+      <summary>
+        <span class="flow-num">3</span>
+        R&amp;I Dak register — stamp IN and OUT
+        <span class="flow-meta">~8 min · Role: secgen</span>
+      </summary>
+      <div class="flow-body">
+        <div class="step">
+          <div class="step-n">1</div>
+          <div>
+            <span class="who">Login as secgen</span>
+            <h3>Stamp incoming dak</h3>
+            <p>Open <strong>Registry</strong> (Dak register) → direction <strong>IN</strong> → submit.</p>
+            <div class="data">
+              <div class="row"><span class="k">From</span><span class="v" data-v>Ministry of Finance — Section Officer</span><button type="button" class="cp">Copy</button></div>
+              <div class="row"><span class="k">Subject</span><span class="v" data-v>UAT-FLOW3 Incoming dak — budget brief for Speaker Office</span><button type="button" class="cp">Copy</button></div>
+              <div class="row"><span class="k">Channel</span><span class="v" data-v>HAND</span><button type="button" class="cp">Copy</button></div>
+              <div class="row"><span class="k">Classification</span><span class="v" data-v>INTERNAL</span><button type="button" class="cp">Copy</button></div>
+            </div>
+            <div class="expect"><strong>You should see:</strong> New IN row with date/time and your name as stamp officer.</div>
+            <div class="mark" data-id="F3-S1"></div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-n">2</div>
+          <div>
+            <span class="who">Still secgen</span>
+            <h3>Stamp outward despatch</h3>
+            <p>Switch form to <strong>OUT</strong>.</p>
+            <div class="data">
+              <div class="row"><span class="k">To</span><span class="v" data-v>Protocol Wing — Director</span><button type="button" class="cp">Copy</button></div>
+              <div class="row"><span class="k">Subject</span><span class="v" data-v>UAT-FLOW3 Outward despatch — acknowledgement of invitation</span><button type="button" class="cp">Copy</button></div>
+              <div class="row"><span class="k">Channel</span><span class="v" data-v>INTERNAL</span><button type="button" class="cp">Copy</button></div>
+            </div>
+            <div class="expect"><strong>You should see:</strong> OUT entry with reference number.</div>
+            <div class="mark" data-id="F3-S2"></div>
+          </div>
+        </div>
+      </div>
+    </details>
+
+    <!-- FLOW 4 -->
+    <details class="flow" id="flow4">
+      <summary>
+        <span class="flow-num">4</span>
+        Meeting request → approve → action → direction
+        <span class="flow-meta">~12 min · Roles: secgen → speaker → secgen/speaker</span>
+      </summary>
+      <div class="flow-body">
+        <div class="step">
+          <div class="step-n">1</div>
+          <div>
+            <span class="who">Login as secgen</span>
+            <h3>Create a meeting request</h3>
+            <p>Open <strong>Meetings</strong> → new request. Use tomorrow or a free afternoon slot.</p>
+            <div class="data">
+              <div class="row"><span class="k">Title</span><span class="v" data-v>UAT-FLOW4 Courtesy call — Ambassador of Exampleland</span><button type="button" class="cp">Copy</button></div>
+              <div class="row"><span class="k">Location</span><span class="v" data-v>Speaker Chamber</span><button type="button" class="cp">Copy</button></div>
+              <div class="row"><span class="k">Brief</span><span class="v" data-v>Official visitor. Courtesy call 30 minutes. Background: bilateral cultural cooperation.</span><button type="button" class="cp">Copy</button></div>
+              <div class="row"><span class="k">Screening</span><span class="v" data-v>PENDING · CNIC 35202-1234567-1 · Official visitor</span><button type="button" class="cp">Copy</button></div>
+            </div>
+            <div class="expect"><strong>You should see:</strong> Meeting saved as REQUESTED (or conflict UI if diary busy — pick an alternative or Force).</div>
+            <div class="mark" data-id="F4-S1"></div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-n">2</div>
+          <div>
+            <span class="who">Logout → login as speaker</span>
+            <h3>Approve the meeting</h3>
+            <p>Open <code>UAT-FLOW4</code> → Approve.</p>
+            <div class="expect"><strong>You should see:</strong> Status APPROVED; screening fields still visible.</div>
+            <div class="mark" data-id="F4-S2"></div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-n">3</div>
+          <div>
+            <span class="who">speaker or secgen</span>
+            <h3>Add action and link to Directions</h3>
+            <div class="data">
+              <div class="row"><span class="k">Action title</span><span class="v" data-v>UAT-FLOW4 Circulate background brief to Spec Sec before call</span><button type="button" class="cp">Copy</button></div>
+              <div class="row"><span class="k">Owner</span><span class="v" data-v>Special Secretary</span><button type="button" class="cp">Copy</button></div>
+              <div class="row"><span class="k">Option</span><span class="v" data-v>Tick “Create linked direction immediately” (or Promote after create)</span><button type="button" class="cp" hidden></button></div>
+            </div>
+            <div class="expect"><strong>You should see:</strong> New item under Directions linked to the meeting action.</div>
+            <div class="mark" data-id="F4-S3"></div>
+          </div>
+        </div>
+      </div>
+    </details>
+
+    <!-- FLOW 5 -->
+    <details class="flow" id="flow5">
+      <summary>
+        <span class="flow-num">5</span>
+        Schedule conflict + alternatives
+        <span class="flow-meta">~8 min · Role: speaker</span>
+      </summary>
+      <div class="flow-body">
+        <div class="step">
+          <div class="step-n">1</div>
+          <div>
+            <span class="who">Login as speaker</span>
+            <h3>Book a diary slot</h3>
+            <p>Open <strong>Schedule</strong>. Create an engagement tomorrow mid-morning.</p>
+            <div class="data">
+              <div class="row"><span class="k">Title</span><span class="v" data-v>UAT-FLOW5 Primary diary block — office hours</span><button type="button" class="cp">Copy</button></div>
+              <div class="row"><span class="k">Location</span><span class="v" data-v>Chamber</span><button type="button" class="cp">Copy</button></div>
+              <div class="row"><span class="k">Time</span><span class="v" data-v>Tomorrow 11:00–12:00 (adjust if busy)</span><button type="button" class="cp" hidden></button></div>
+            </div>
+            <div class="expect"><strong>You should see:</strong> Item appears on diary.</div>
+            <div class="mark" data-id="F5-S1"></div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-n">2</div>
+          <div>
+            <span class="who">Still speaker</span>
+            <h3>Force a conflict</h3>
+            <p>Create a second item overlapping the same hour.</p>
+            <div class="data">
+              <div class="row"><span class="k">Title</span><span class="v" data-v>UAT-FLOW5 Overlap attempt — should show conflict</span><button type="button" class="cp">Copy</button></div>
+            </div>
+            <div class="expect"><strong>You should see:</strong> Conflict message + suggested alternative times. Choose an alternative or Force-book once to confirm override works.</div>
+            <div class="mark" data-id="F5-S2"></div>
+          </div>
+        </div>
+      </div>
+    </details>
+
+    <!-- FLOW 6 -->
+    <details class="flow" id="flow6">
+      <summary>
+        <span class="flow-num">6</span>
+        Search, Urdu UI, and audit spot-check
+        <span class="flow-meta">~8 min · Roles: speaker, then admin</span>
+      </summary>
+      <div class="flow-body">
+        <div class="step">
+          <div class="step-n">1</div>
+          <div>
+            <span class="who">Login as speaker</span>
+            <h3>Search for your Flow 1 file</h3>
+            <div class="data">
+              <div class="row"><span class="k">Search</span><span class="v" data-v>UAT-FLOW1</span><button type="button" class="cp">Copy</button></div>
+            </div>
+            <div class="expect"><strong>You should see:</strong> Your Cultural Evening matter in results.</div>
+            <div class="mark" data-id="F6-S1"></div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-n">2</div>
+          <div>
+            <span class="who">Still speaker</span>
+            <h3>Switch language to Urdu</h3>
+            <p>Use EN / اردو toggle. Open Files and Directions briefly.</p>
+            <div class="expect"><strong>You should see:</strong> Menu labels switch; layout may go RTL. Switch back to EN when done.</div>
+            <div class="mark" data-id="F6-S2"></div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-n">3</div>
+          <div>
+            <span class="who">Logout → login as admin</span>
+            <h3>Check audit trail</h3>
+            <p>Open <strong>Audit</strong>. Look for actions from Flow 1 (register, route, decide, evidence).</p>
+            <div class="expect"><strong>You should see:</strong> Recent audit rows matching what you did.</div>
+            <div class="mark" data-id="F6-S3"></div>
+          </div>
+        </div>
+      </div>
+    </details>
+
+    <section class="card" id="feedback">
+      <h2>When you finish — send feedback</h2>
+      <p class="lead">Click <strong>Copy my results</strong> (top or below), paste into email/chat, and add blockers / UX notes.</p>
+      <div class="callout warn">
+        Please do not ask the team to run automated smoke scripts on this shared preview — it pollutes the data.
+        If the environment gets messy, ask them to re-run the tester prepare pack.
+      </div>
+      <div class="actions" style="margin-top:14px">
+        <button class="btn primary" type="button" id="copy-results-2">Copy my results</button>
+      </div>
+    </section>
+
+    <footer>
+      Government Office Workflow · Self-guided UAT ·
+      <a href="https://office-workflow-preview.walkwell.pk/login">office-workflow-preview.walkwell.pk</a>
+    </footer>
+  </div>
+
+  <script>
+    (function () {
+      function wireMarks() {
+        document.querySelectorAll(".mark").forEach(function (el) {
+          if (el.dataset.ready) return;
+          el.dataset.ready = "1";
+          var id = el.getAttribute("data-id") || "S";
+          el.innerHTML =
+            '<label><input type="radio" name="' + id + '" value="Done" /> Done</label>' +
+            '<label><input type="radio" name="' + id + '" value="Fail" /> Fail</label>' +
+            '<label><input type="radio" name="' + id + '" value="Blocked" /> Blocked</label>' +
+            '<textarea placeholder="Note if Fail / Blocked"></textarea>';
+        });
+      }
+      wireMarks();
+
+      document.querySelectorAll("button[data-copy], .data button.cp").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          var text = btn.getAttribute("data-copy");
+          if (!text) {
+            var v = btn.parentElement && btn.parentElement.querySelector("[data-v]");
+            text = v ? v.textContent : "";
+          }
+          if (!text) return;
+          navigator.clipboard.writeText(text).then(function () {
+            var old = btn.textContent;
+            btn.textContent = "Copied";
+            setTimeout(function () { btn.textContent = old; }, 1000);
+          });
+        });
+      });
+
+      document.getElementById("expand-all").addEventListener("click", function () {
+        document.querySelectorAll("details.flow").forEach(function (d) { d.open = true; });
+      });
+
+      function copyResults() {
+        var lines = [
+          "Self-guided UAT results",
+          "Tester name:",
+          "Date: " + new Date().toISOString().slice(0, 10),
+          "Environment: https://office-workflow-preview.walkwell.pk/login",
+          "",
+          "Step | Result | Notes",
+        ];
+        document.querySelectorAll(".mark").forEach(function (el) {
+          var id = el.getAttribute("data-id");
+          var checked = el.querySelector('input[type="radio"]:checked');
+          var notes = (el.querySelector("textarea") || {}).value || "";
+          lines.push(id + " | " + (checked ? checked.value : "-") + " | " + notes.replace(/\n/g, " "));
+        });
+        lines.push("", "Blockers:", "UX issues:", "Missing vs office practice:");
+        navigator.clipboard.writeText(lines.join("\n"));
+        alert("Results copied — paste into your email or chat.");
+      }
+      document.getElementById("copy-results").addEventListener("click", copyResults);
+      document.getElementById("copy-results-2").addEventListener("click", copyResults);
+    })();
+  </script>
+</body>
+</html>

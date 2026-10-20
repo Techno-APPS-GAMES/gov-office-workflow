@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Role, ROLE_META } from '@gow/shared';
 import { AuthProvider, useAuth } from '@/components/AuthProvider';
@@ -25,9 +25,11 @@ function LoginForm() {
   const [mfaCode, setMfaCode] = useState('');
   const [busy, setBusy] = useState(false);
 
-  if (user && !mfaQr) {
-    router.replace('/overview');
-  }
+  useEffect(() => {
+    if (user && !mfaQr) {
+      router.replace('/overview');
+    }
+  }, [user, mfaQr, router]);
 
   function pickRole(r: Role) {
     setRole(r);
@@ -77,7 +79,10 @@ function LoginForm() {
           <h1>{label('appName')}</h1>
           <p>{label('tagline')}</p>
         </div>
-        <div className="login-foot">Private on-prem deployment · Real accounts · MFA required</div>
+        <div className="login-foot">
+          Private on-prem deployment · Real accounts
+          {process.env.NEXT_PUBLIC_MFA_REQUIRED !== 'false' ? ' · MFA required' : ' · MFA off (testing)'}
+        </div>
       </section>
       <section className="login-right">
         <div className="login-box">

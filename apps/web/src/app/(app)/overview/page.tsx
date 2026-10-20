@@ -1,11 +1,12 @@
 'use client';
 
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
 import { useAuth } from '@/components/AuthProvider';
 import { useToast } from '@/components/Toast';
 import { pageTitle } from '@/lib/i18n';
+import { useLiveRefresh } from '@/lib/live-refresh';
 
 type Dash = {
   kpis: {
@@ -132,13 +133,15 @@ export default function OverviewPage() {
   const [filePassword, setFilePassword] = useState('');
   const [unlockBusy, setUnlockBusy] = useState(false);
 
-  async function load() {
+  const load = useCallback(async () => {
     setDash(await api<Dash>('/health/dashboard'));
-  }
+  }, []);
 
   useEffect(() => {
     load().catch((e) => setError(String(e.message || e)));
-  }, []);
+  }, [load]);
+
+  useLiveRefresh(load, [load]);
 
   const upcomingLine = useMemo(() => {
     if (!dash) return '';
