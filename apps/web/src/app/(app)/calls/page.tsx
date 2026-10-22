@@ -84,6 +84,7 @@ export default function CallsPage() {
   const [stat, setStat] = useState<StatFilter>('all');
   const [showForm, setShowForm] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [focusId, setFocusId] = useState<string | null>(null);
   const [linkFor, setLinkFor] = useState<string | null>(null);
   const [matterPick, setMatterPick] = useState('');
   const [form, setForm] = useState({
@@ -115,6 +116,21 @@ export default function CallsPage() {
   useEffect(() => {
     load().catch(() => setItems([]));
   }, [load]);
+
+  useEffect(() => {
+    try {
+      const focus = new URLSearchParams(window.location.search).get('focus');
+      if (focus) setFocusId(focus);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!focusId) return;
+    const el = document.getElementById(`call-${focusId}`);
+    el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [focusId, items]);
 
   const counts = useMemo(() => {
     const linked = items.filter((c) => !!c.matterId).length;
@@ -402,7 +418,7 @@ export default function CallsPage() {
                 const when = fmtWhen(c.createdAt);
                 const inbound = isInbound(c.direction);
                 return (
-                  <tr key={c.id}>
+                  <tr key={c.id} id={`call-${c.id}`} className={focusId === c.id ? 'focus' : undefined}>
                     <td>
                       <strong>{callRef(c.id)}</strong>
                       <div className="muted">{when.date}</div>

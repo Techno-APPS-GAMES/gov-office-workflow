@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { Role } from '@prisma/client';
 import { SpeechesService } from './speeches.service';
 import { CurrentUser } from '../auth/current-user.decorator';
@@ -9,8 +9,8 @@ export class SpeechesController {
   constructor(private speeches: SpeechesService) {}
 
   @Get()
-  list() {
-    return this.speeches.list();
+  list(@Query('status') status?: string) {
+    return this.speeches.list(status);
   }
 
   @Get(':id')
@@ -21,26 +21,52 @@ export class SpeechesController {
   @Post()
   create(
     @CurrentUser() user: { id: string },
-    @Body() body: { title: string; body: string; language?: string; eventDate?: string },
+    @Body()
+    body: {
+      title: string;
+      body: string;
+      bodyUr?: string;
+      talkingPoints?: string;
+      talkingPointsUr?: string;
+      language?: string;
+      eventDate?: string;
+      eventVenue?: string;
+      matterId?: string;
+      sourcesNote?: string;
+      aiAssisted?: boolean;
+    },
   ) {
     return this.speeches.create(user.id, body);
   }
 
   @Patch(':id/status')
-  @Roles(Role.SPEAKER, Role.SECRETARY_GENERAL, Role.ADMIN)
   setStatus(
     @Param('id') id: string,
-    @Body('status') status: string,
-    @CurrentUser() user: { id: string },
+    @Body() body: { status: string; reason?: string },
+    @CurrentUser() user: { id: string; role: Role },
   ) {
-    return this.speeches.setStatus(id, user.id, status);
+    return this.speeches.setStatus(id, user, body.status, body.reason);
   }
 
   @Patch(':id')
   update(
     @Param('id') id: string,
     @CurrentUser() user: { id: string },
-    @Body() body: { title?: string; body?: string; language?: string },
+    @Body()
+    body: {
+      title?: string;
+      body?: string;
+      bodyUr?: string;
+      talkingPoints?: string;
+      talkingPointsUr?: string;
+      language?: string;
+      eventDate?: string | null;
+      eventVenue?: string;
+      matterId?: string | null;
+      sourcesNote?: string;
+      aiAssisted?: boolean;
+      markHumanReviewed?: boolean;
+    },
   ) {
     return this.speeches.update(id, user.id, body);
   }

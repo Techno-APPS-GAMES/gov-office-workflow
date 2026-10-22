@@ -1,10 +1,10 @@
 export type Lang = 'en' | 'ur';
 
 const en: Record<string, string> = {
-  appName: 'Office Workflow',
-  brandSub: 'OFFICE WORKFLOW · PRODUCTION',
+  appName: 'National Assembly Secretariat',
+  brandSub: 'OFFICIAL WORKSPACE',
   tagline: 'Trace each matter, follow directions and review the institutional record in one secure workspace.',
-  kicker: 'Paperless File Routing System',
+  kicker: 'Government of Pakistan',
   chooseRole: 'Choose a role',
   chooseRoleHelp: 'Each role has a distinct workspace. Each confidential file has its own password set at registration.',
   enterWorkspace: 'Enter workspace →',
@@ -60,10 +60,10 @@ const en: Record<string, string> = {
 
 const ur: Record<string, string> = {
   ...en,
-  appName: 'دفتری ورک فلو',
-  brandSub: 'حکومتی دفتر · پروڈکشن',
+  appName: 'قومی اسمبلی سیکرٹریٹ',
+  brandSub: 'سرکاری ورک اسپیس',
   tagline: 'ہر معاملے کا سراغ رکھیں، ہدایات پر عمل کریں اور ادارہ جاتی ریکارڈ ایک محفوظ ورک اسپیس میں دیکھیں۔',
-  kicker: 'کاغذی فائل روٹنگ نظام',
+  kicker: 'حکومتِ پاکستان',
   chooseRole: 'کردار منتخب کریں',
   enterWorkspace: 'ورک اسپیس میں داخل ہوں ←',
   logout: 'کردار بدلیں',

@@ -3,6 +3,18 @@ import ExcelJS from 'exceljs';
 import { PrismaService } from '../prisma/prisma.service';
 import { CryptoService } from '../crypto/crypto.service';
 
+/** Embedded Postgres on Windows often uses WIN1252 client encoding — keep audit ASCII-safe. */
+function asciiSafe(text: string) {
+  return (text || '')
+    .replace(/\u2192/g, '->') // →
+    .replace(/\u2190/g, '<-') // ←
+    .replace(/[\u2013\u2014\u2212]/g, '-') // – — −
+    .replace(/\u2026/g, '...') // …
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/[\u201C\u201D]/g, '"')
+    .replace(/[^\x09\x0A\x0D\x20-\x7E]/g, '?');
+}
+
 @Injectable()
 export class AuditService {
   constructor(
@@ -19,6 +31,7 @@ export class AuditService {
     ip?: string;
     userAgent?: string;
   }) {
+    const summary = asciiSafe(input.summary);
     const last = await this.prisma.auditEvent.findFirst({
       orderBy: { seq: 'desc' },
     });
@@ -29,7 +42,7 @@ export class AuditService {
       input.action,
       input.entityType,
       input.entityId || '',
-      input.summary,
+      summary,
     ].join('|');
     const hash = this.crypto.sha256(material);
     return this.prisma.auditEvent.create({
@@ -38,7 +51,7 @@ export class AuditService {
         action: input.action,
         entityType: input.entityType,
         entityId: input.entityId || null,
-        summary: input.summary,
+        summary,
         ip: input.ip,
         userAgent: input.userAgent,
         prevHash,

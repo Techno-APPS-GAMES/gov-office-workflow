@@ -16,6 +16,8 @@ async function main() {
     password: 'gow_change_me',
     port,
     persistent: true,
+    // Windows default locale often yields WIN1252 — Urdu summaries need UTF8.
+    initdbFlags: ['--encoding=UTF8', '--locale=C'],
   });
   if (!alreadyInit) {
     await pg.initialise();

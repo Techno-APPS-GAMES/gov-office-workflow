@@ -107,7 +107,7 @@ export class CallsService {
       action: 'CALL_STATUS',
       entityType: 'CallRecord',
       entityId: id,
-      summary: `Call status → ${status}`,
+      summary: `Call status -> ${status}`,
     });
     return updated;
   }

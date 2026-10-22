@@ -71,6 +71,10 @@ function MatterDetailInner() {
   const [templateId, setTemplateId] = useState('');
   const [summaryLang, setSummaryLang] = useState<'en' | 'ur'>('en');
   const [summaryEdit, setSummaryEdit] = useState('');
+  const [esignSigner, setEsignSigner] = useState('');
+  const [esignPurpose, setEsignPurpose] = useState('');
+  const [esignMethod, setEsignMethod] = useState<'LOCAL_PKI' | 'WET_INK'>('LOCAL_PKI');
+  const [esignBusy, setEsignBusy] = useState(false);
 
   const load = useCallback(async () => {
     const m = await api<any>(`/files/${id}`);
@@ -440,6 +444,83 @@ function MatterDetailInner() {
                   </>
                 )}
                 <button className="btn primary" type="submit">Record decision</button>
+              </form>
+            </div>
+          )}
+          {(user?.role === 'SPEAKER' ||
+            user?.role === 'SECRETARY_GENERAL' ||
+            user?.role === 'SPECIAL_SECRETARY' ||
+            user?.role === 'ADMIN') &&
+            matter.status !== 'CLOSED' && (
+            <div className="panel">
+              <h2>Remote e-sign</h2>
+              <p className="muted">
+                Queue this file for secure remote review and digital seal (consultation §3.5).
+                Continues in{' '}
+                <a href="/remote">Remote studio</a>.
+              </p>
+              <form
+                className="grid-form"
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  if (!esignSigner) return;
+                  setEsignBusy(true);
+                  try {
+                    await api('/esign/request', {
+                      method: 'POST',
+                      json: {
+                        matterId: id,
+                        signerId: esignSigner,
+                        purpose: esignPurpose.trim() || undefined,
+                        method: esignMethod,
+                      },
+                    });
+                    toast.success('Remote seal requested');
+                    notifyDataChanged();
+                    setEsignPurpose('');
+                  } catch (err) {
+                    toast.error(err instanceof Error ? err.message : 'E-sign request failed');
+                  } finally {
+                    setEsignBusy(false);
+                  }
+                }}
+              >
+                <div className="field">
+                  <label>Designated signer</label>
+                  <select
+                    value={esignSigner}
+                    onChange={(e) => setEsignSigner(e.target.value)}
+                    required
+                  >
+                    <option value="">Select</option>
+                    {people.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.displayName}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="field">
+                  <label>Purpose</label>
+                  <input
+                    value={esignPurpose}
+                    onChange={(e) => setEsignPurpose(e.target.value)}
+                    placeholder="What the signer is approving"
+                  />
+                </div>
+                <div className="field">
+                  <label>Method</label>
+                  <select
+                    value={esignMethod}
+                    onChange={(e) => setEsignMethod(e.target.value as 'LOCAL_PKI' | 'WET_INK')}
+                  >
+                    <option value="LOCAL_PKI">Local PKI (RSA-SHA256)</option>
+                    <option value="WET_INK">Wet-ink scan</option>
+                  </select>
+                </div>
+                <button className="btn primary" type="submit" disabled={esignBusy}>
+                  Request remote seal
+                </button>
               </form>
             </div>
           )}

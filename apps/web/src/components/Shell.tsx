@@ -117,6 +117,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
       <div className="login-page">
         <section className="login-left">
           <div>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/na-crest.png" alt="" className="login-emblem" />
             <div className="kicker">{label('kicker')}</div>
             <h1>MFA required</h1>
             <p>Complete authenticator enrollment before using the workspace.</p>
@@ -165,9 +167,10 @@ export function Shell({ children }: { children: React.ReactNode }) {
     <div className="app">
       <aside className="sidebar">
         <div className="brand">
-          <div className="brand-mark">§</div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/na-crest.png" alt="" className="brand-mark" />
           <div>
-            <strong>Workflow</strong>
+            <strong>{label('appName')}</strong>
             <span>{label('brandSub')}</span>
           </div>
         </div>

@@ -140,7 +140,7 @@ export class NotificationsService {
         kind: 'WORK' as const,
         title: w.title,
         detail: `${w.kind} · Submitted · ${w.owner.displayName}`,
-        href: '/extensions',
+        href: `/extensions?focus=${w.id}`,
         action: 'Review document',
         primary: true,
       })),

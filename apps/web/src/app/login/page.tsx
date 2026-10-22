@@ -75,6 +75,8 @@ function LoginForm() {
     <div className="login-page">
       <section className="login-left">
         <div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/na-crest.png" alt="National Assembly Secretariat" className="login-emblem" />
           <div className="kicker">{label('kicker')}</div>
           <h1>{label('appName')}</h1>
           <p>{label('tagline')}</p>

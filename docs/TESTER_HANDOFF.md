@@ -1,90 +1,21 @@
-# Self-guided tester handoff — Government Office Workflow
+# UAT handoff packs
 
-**Primary guide for testers (open in browser):** [`TESTER_HANDOFF.html`](./TESTER_HANDOFF.html)
+**Index:** [TESTER_HANDOFF.html](./TESTER_HANDOFF.html)
 
-Testers **perform the work themselves**. We give logins, exact sample text to type, and step-by-step flows. They should create new records (subjects starting with `UAT-FLOW…`), not only inspect old seeded data.
+| Pack | File | Prefix | Length | Theme |
+|------|------|--------|--------|-------|
+| Pack 01 | [TESTER_HANDOFF_01.html](./TESTER_HANDOFF_01.html) | `UAT-P01` | Full | Cultural evening — protocol advice |
+| Pack 02 | [TESTER_HANDOFF_02.html](./TESTER_HANDOFF_02.html) | `UAT-P02` | Full | Mid-year budget brief — finance coordination |
+| Pack 03 | [TESTER_HANDOFF_03.html](./TESTER_HANDOFF_03.html) | `UAT-P03` | Full | Standing Committee visit — logistics |
+| Pack 04 | [TESTER_HANDOFF_04.html](./TESTER_HANDOFF_04.html) | `UAT-P04` | Full | Media Day — press coordination |
+| Pack 05 | [TESTER_HANDOFF_05.html](./TESTER_HANDOFF_05.html) | `UAT-P05` | Full | National Day greetings — protocol cards |
+| Pack 06 | [TESTER_HANDOFF_06.html](./TESTER_HANDOFF_06.html) | `UAT-P06` | Short | Short smoke — core path only |
 
----
+No personal names — only pack numbers and `UAT-P0x` prefixes.
 
-## Access
+Steps use exact nav labels (`Files & documents`, `Dak register (R&I)`, `Acknowledge receipt`, `Generate summary`, `E-Sign & Seal Document`, etc.).
 
-| Item | Value |
-|------|--------|
-| Web | https://office-workflow-preview.walkwell.pk/login |
-| Password (all accounts) | `Tester@Office1` |
-| Confidential vault (Flow 2) | `VaultTest!01` |
-
-| Username | Role |
-|----------|------|
-| `speaker` | Speaker |
-| `secgen` | Secretary General |
-| `specsec` | Special Secretary |
-| `admin` | Admin (audit) |
-
-MFA is off for UAT. You should **not** see “Enable authenticator”.
-
----
-
-## Flows to complete (in order)
-
-### Flow 1 — Full file path (~25 min)
-**Roles:** speaker → secgen → speaker → specsec → speaker  
-
-1. As **speaker**, register INTERNAL file with subject `UAT-FLOW1 Invitation to Cultural Evening — Protocol advice required` (full body in HTML guide).  
-2. Add noting + Generate/Accept summary.  
-3. Route to **secgen** (“Examine and advise…”).  
-4. As **secgen**, Acknowledge → note → Complete procedure.  
-5. As **speaker**, Decision = DIRECTION to **specsec** titled `UAT-FLOW1 Prepare one-page Cultural Evening briefing + seating plan`.  
-6. As **specsec**, Start direction → submit evidence text + file.  
-7. As **speaker**, Verify evidence → Close matter.
-
-### Flow 2 — Confidential vault (~10 min)
-**Role:** speaker  
-
-Register CONFIDENTIAL matter `UAT-FLOW2…`, password `VaultTest!01`, unlock, attach, download with short reason (should fail) then proper reason (should pass).
-
-### Flow 3 — Dak register (~8 min)
-**Role:** secgen  
-
-Stamp IN `UAT-FLOW3 Incoming dak…` then OUT `UAT-FLOW3 Outward despatch…` on **Registry**.
-
-### Flow 4 — Meeting → direction (~12 min)
-**Roles:** secgen → speaker  
-
-Create meeting `UAT-FLOW4 Courtesy call…` → Speaker approves → add action with linked direction.
-
-### Flow 5 — Schedule conflict (~8 min)
-**Role:** speaker  
-
-Book `UAT-FLOW5 Primary diary block…` then overlapping `UAT-FLOW5 Overlap attempt…` → confirm conflict UI / alternatives.
-
-### Flow 6 — Search, Urdu, audit (~8 min)
-**Roles:** speaker → admin  
-
-Search `UAT-FLOW1` → toggle اردو → as **admin** check Audit for your actions.
-
----
-
-## Feedback
-
-Use **Copy my results** in the HTML (or paste):
-
+```bash
+npm run prepare:uat -w @gow/api
+node docs/generate-tester-handoffs.mjs
 ```
-Tester name:
-Date:
-Environment: https://office-workflow-preview.walkwell.pk/login
-
-Step | Result (Done/Fail/Blocked) | Notes
-
-Blockers:
-UX issues:
-Missing vs office practice:
-Screenshots:
-```
-
----
-
-## For the delivery team
-
-Reset clean pack: `npm run prepare:testers`  
-Do not run `npm run smoke` on shared preview after handoff.

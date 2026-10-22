@@ -14,7 +14,9 @@
     "prisma:seed": "tsx prisma/seed.ts",
     "db:local": "tsx scripts/local-pg.ts",
     "smoke": "tsx scripts/smoke.ts",
-    "prepare:testers": "tsx scripts/prepare-tester-pack.ts"
+    "prepare:uat": "tsx scripts/prepare-tester-pack.ts",
+    "prepare:testers": "tsx scripts/prepare-tester-pack.ts",
+    "prepare:testers-samples": "tsx scripts/prepare-tester-pack.ts --samples"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

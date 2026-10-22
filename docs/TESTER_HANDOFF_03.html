@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Pack 03 · UAT-P03 — UAT handoff</title>
+<style>:root{--ink:#1a2332;--muted:#5c6b7a;--line:#d8dee6;--paper:#f7f5f1;--card:#fff;--pine:#6b3a1a;--pine-soft:#e8f2ec;--amber:#8a5a12;--amber-soft:#faf0e0;--sky:#e8eef6;--ok:#1e5c3a;--shadow:0 1px 2px rgba(26,35,50,.06),0 8px 24px rgba(26,35,50,.06);--font:"Segoe UI",system-ui,sans-serif;--mono:Consolas,monospace}
+*{box-sizing:border-box}html{scroll-behavior:smooth}
+body{margin:0;font-family:var(--font);color:var(--ink);line-height:1.55;background:radial-gradient(ellipse 70% 40% at 0% 0%,#e4efe8,transparent 55%),var(--paper)}
+a{color:var(--pine)}code{font-family:var(--mono);font-size:.86em;background:#eef2f6;padding:.1em .35em;border-radius:4px}
+.wrap{max-width:940px;margin:0 auto;padding:24px 16px 100px}
+.hero{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:26px;margin-bottom:14px;border-top:5px solid var(--pine)}
+.eyebrow{font-size:.7rem;letter-spacing:.08em;text-transform:uppercase;color:var(--pine);font-weight:700}
+h1{margin:6px 0 8px;font-size:clamp(1.3rem,3vw,1.75rem)}
+.tag{display:inline-block;background:var(--pine);color:#fff;font-family:var(--mono);font-size:.85rem;padding:4px 12px;border-radius:999px;margin:8px 0}
+.hero p{margin:0;color:var(--muted)}.actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+.btn{display:inline-flex;border:1px solid var(--line);background:#fff;color:var(--ink);padding:8px 14px;border-radius:999px;font-size:.88rem;text-decoration:none;cursor:pointer}
+.btn.primary{background:var(--pine);border-color:var(--pine);color:#fff}
+.toc{position:sticky;top:0;z-index:10;display:flex;flex-wrap:wrap;gap:5px;background:rgba(247,245,241,.95);border:1px solid var(--line);border-radius:10px;padding:8px;margin-bottom:14px}
+.toc a{text-decoration:none;font-size:.72rem;color:var(--muted);padding:4px 8px;border-radius:999px}
+.toc a:hover{background:var(--pine-soft);color:var(--pine)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:20px;margin-bottom:14px}
+.card h2{margin:0 0 6px;font-size:1.12rem}.lead{margin:0 0 12px;color:var(--muted);font-size:.93rem}
+.creds{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px}
+.cred{background:var(--pine-soft);border:1px solid #c5d9cc;border-radius:10px;padding:10px}
+.cred.vault{background:var(--amber-soft);border-color:#e6d2a8}
+.cred .lbl{font-size:.68rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:700}
+.cred .val{font-family:var(--mono);font-size:.88rem;margin-top:3px;word-break:break-all}
+.cred button,.cp{margin-top:6px;border:1px solid var(--line);background:#fff;border-radius:6px;font-size:.72rem;padding:3px 8px;cursor:pointer;color:var(--pine)}
+table{width:100%;border-collapse:collapse;font-size:.88rem}th,td{text-align:left;padding:7px 9px;border-bottom:1px solid var(--line)}
+th{font-size:.7rem;text-transform:uppercase;color:var(--muted);background:#f3f5f7}
+.scroll{overflow-x:auto;border:1px solid var(--line);border-radius:10px;margin-top:10px}
+.mod{border:1px solid var(--line);border-radius:14px;overflow:hidden;margin-bottom:12px;background:var(--card);box-shadow:var(--shadow)}
+.mod>summary{list-style:none;cursor:pointer;padding:13px 15px;background:linear-gradient(180deg,#f8faf9,#f1f4f2);display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-weight:700}
+.mod>summary::-webkit-details-marker{display:none}
+.mod-num{background:var(--pine);color:#fff;min-width:28px;height:28px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:.8rem}
+.mod-meta{width:100%;font-weight:500;color:var(--muted);font-size:.8rem}
+.mod-body{padding:4px 12px 14px}
+.step{display:grid;grid-template-columns:36px 1fr;gap:10px;padding:12px 4px;border-bottom:1px dashed var(--line)}
+.step:last-child{border-bottom:none}
+.step-n{width:30px;height:30px;border-radius:50%;background:var(--sky);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.8rem}
+.step h3{margin:0 0 6px;font-size:.95rem}
+.who,.where{display:inline-block;font-size:.72rem;font-weight:700;padding:2px 8px;border-radius:999px;margin:0 6px 8px 0}
+.who{background:var(--pine-soft);color:var(--pine)}.where{background:var(--sky);color:#2a4a6b}
+.do{margin:0 0 8px;padding-left:18px;font-size:.9rem}.do li{margin:4px 0}
+.data{background:#fafbfc;border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin:8px 0}
+.data .row{display:grid;grid-template-columns:120px 1fr auto;gap:6px;padding:5px 0;border-bottom:1px solid #eef1f4;align-items:start}
+.data .row:last-child{border-bottom:none}
+.data .k{color:var(--muted);font-size:.7rem;text-transform:uppercase;font-weight:700;padding-top:2px}
+.data .v{font-family:var(--mono);font-size:.82rem;white-space:pre-wrap;word-break:break-word}
+.expect{background:#eef8f1;border-left:3px solid var(--ok);padding:8px 11px;border-radius:0 8px 8px 0;font-size:.86rem;margin-top:8px}
+.mark{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:8px;padding-top:8px;border-top:1px dashed var(--line)}
+.mark label{font-size:.82rem;border:1px solid var(--line);border-radius:999px;padding:3px 9px;cursor:pointer;background:#fafbfc}
+.mark label:has(input:checked){background:var(--pine-soft);border-color:var(--pine)}
+.mark textarea{width:100%;min-height:38px;margin-top:4px;border:1px solid var(--line);border-radius:8px;padding:7px;font:inherit}
+.callout{border-left:4px solid var(--pine);background:var(--pine-soft);padding:11px 13px;border-radius:0 8px 8px 0;font-size:.9rem;margin-top:10px}
+.callout.warn{border-left-color:var(--amber);background:var(--amber-soft)}
+footer{text-align:center;color:var(--muted);font-size:.82rem;margin-top:20px}
+@media(max-width:560px){.data .row{grid-template-columns:1fr}}
+@media print{.toc,.actions,.btn,.cp,.mark{display:none!important}}</style>
+</head>
+<body>
+<div class="wrap">
+<header class="hero">
+  <div class="eyebrow">Self-guided UAT · Exact steps</div>
+  <h1>Pack 03</h1>
+  <div class="tag">UAT-P03</div>
+  <p><strong>Theme:</strong> Standing Committee visit — logistics. Full module tour (~2–2.5 hours).
+  Follow steps <em>in order</em>. Use Copy for every field. Always keep prefix <code>UAT-P03</code> in subjects you create.</p>
+  <div class="actions">
+    <a class="btn primary" href="https://office-workflow-preview.walkwell.pk/login" target="_blank" rel="noopener">Open login</a>
+    <button class="btn" type="button" id="expand-all">Expand all</button>
+    <button class="btn" type="button" onclick="window.print()">Print / PDF</button>
+    <button class="btn" type="button" id="copy-results">Copy results</button>
+    <a class="btn" href="./TESTER_HANDOFF.html">All packs</a>
+  </div>
+</header>
+<nav class="toc"><a href="#access">Start</a><a href="#m01">01 Login</a><a href="#m02">02 Files</a><a href="#m03">03 Decide</a><a href="#m04">04 Vault</a><a href="#m05">05 Dak</a><a href="#m06">06 Messages</a><a href="#m07">07 Meet/Sched</a><a href="#m08">08 Calls</a><a href="#m09">09 E-sign</a><a href="#m10">10 Media</a><a href="#m11">11 Records</a><a href="#feedback">Feedback</a></nav>
+
+<section class="card" id="access">
+  <h2>Before you start</h2>
+  <p class="lead">Keep this guide beside the app. Switch accounts only when the step says so (top-bar logout).</p>
+  <div class="creds">
+    <div class="cred"><div class="lbl">Web</div><div class="val">https://office-workflow-preview.walkwell.pk/login</div><button type="button" data-copy="https://office-workflow-preview.walkwell.pk/login">Copy</button></div>
+    <div class="cred"><div class="lbl">Password (all)</div><div class="val">Tester@Office1</div><button type="button" data-copy="Tester@Office1">Copy</button></div>
+    <div class="cred vault"><div class="lbl">Vault password</div><div class="val">VaultTest!01</div><button type="button" data-copy="VaultTest!01">Copy</button></div>
+    <div class="cred"><div class="lbl">Your pack prefix</div><div class="val">UAT-P03</div><button type="button" data-copy="UAT-P03">Copy</button></div>
+  </div>
+  <div class="scroll">
+    <table>
+      <thead><tr><th>Username</th><th>Role card on login</th><th>Use when guide says</th></tr></thead>
+      <tbody>
+        <tr><td><code>speaker</code></td><td>Speaker</td><td>Decide, approve, vault, e-sign, authorize</td></tr>
+        <tr><td><code>secgen</code></td><td>Secretary General</td><td>Ack files, dak, meetings</td></tr>
+        <tr><td><code>specsec</code></td><td>Special Secretary</td><td>Directions evidence, speeches, press, greetings</td></tr>
+        <tr><td><code>admin</code></td><td>(type username admin)</td><td>Audit at the end</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="callout">MFA must stay off. If “Enable authenticator” appears, stop and report. Database should be a clean UAT slate (<code>npm run prepare:uat -w @gow/api</code>).</div>
+</section>
+
+<details class="mod" id="m01" open>
+  <summary><span class="mod-num">01</span> Login &amp; shell<span class="mod-meta">Exact path · ~5 min</span></summary>
+  <div class="mod-body"><div class="step">
+  <div class="step-n">1</div>
+  <div>
+    <span class="who">Account: speaker</span>
+    <span class="where">Browser → login page</span>
+    <h3>Sign in as Speaker</h3>
+    
+    <ol class="do"><li>Open <code>https://office-workflow-preview.walkwell.pk/login</code></li><li>On the right, click the <strong>Speaker</strong> role card (username fills as <code>speaker</code>)</li><li>Password field: type / paste <code>Tester@Office1</code></li><li>Click the primary button to sign in (label is usually the Sign in / Continue control)</li></ol>
+    <div class="data"><div class="row"><span class="k">Username</span><span class="v" data-v>speaker</span><button type="button" class="cp">Copy</button></div><div class="row"><span class="k">Password</span><span class="v" data-v>Tester@Office1</span><button type="button" class="cp">Copy</button></div></div>
+    
+    <div class="expect"><strong>Pass if:</strong> You land on Office overview. No “Enable authenticator” / MFA screen. Left nav shows Files, Registry, etc.</div>
+    <div class="mark" data-id="UAT-P03-01a"></div>
+  </div>
+</div><div class="step">
+  <div class="step-n">2</div>
+  <div>
+    <span class="who">Still speaker</span>
+    <span class="where">Left nav → Operator guide · Office overview</span>
+    <h3>Confirm Guide + Overview load</h3>
+    
+    <ol class="do"><li>Click <strong>Operator guide</strong> in the left nav (Help group)</li><li>Skim Path A / Path B headings</li><li>Click <strong>Office overview</strong> — note KPI cards (counts may be zero on a clean DB)</li><li>Optional: use EN / اردو language toggle once, then return to English</li></ol>
+    
+    
+    <div class="expect"><strong>Pass if:</strong> Guide and Overview render without errors. Language toggle changes labels.</div>
+    <div class="mark" data-id="UAT-P03-01b"></div>
+  </div>
+</div></div>
+</details>
+<details class="mod" id="m02">
+  <summary><span class="mod-num">02</span> Files — register, summary, route, movement<span class="mod-meta">Left nav: Files &amp; documents · ~20 min</span></summary>
+  <div class="mod-body"><div class="step">
+  <div class="step-n">1</div>
+  <div>
+    <span class="who">Account: speaker</span>
+    <span class="where">Left nav → Files &amp; documents</span>
+    <h3>Register a new INTERNAL matter</h3>
+    
+    <ol class="do"><li>Click <strong>+ Register new matter</strong> (top right)</li><li>Fill every field below exactly (use Copy)</li><li>Classification = <strong>INTERNAL</strong> (not Confidential)</li><li>Click <strong>Register</strong></li><li>When the list refreshes, click <strong>Open</strong> on your new row (or open the diary link)</li></ol>
+    <div class="data"><div class="row"><span class="k">Subject</span><span class="v" data-v>UAT-P03 Standing Committee visit — logistics put-up</span><button type="button" class="cp">Copy</button></div><div class="row"><span class="k">Sender</span><span class="v" data-v>Committee Branch</span><button type="button" class="cp">Copy</button></div><div class="row"><span class="k">Body</span><span class="v" data-v>Standing Committee proposes an on-site visit next fortnight. Advise on Speaker availability, room booking and security escort.</span><button type="button" class="cp">Copy</button></div><div class="row"><span class="k">Classification</span><span class="v" data-v>INTERNAL</span><button type="button" class="cp">Copy</button></div><div class="row"><span class="k">Subject area</span><span class="v" data-v>Committees</span><button type="button" class="cp">Copy</button></div><div class="row"><span class="k">Priority</span><span class="v" data-v>NORMAL</span><button type="button" class="cp">Copy</button></div></div>
+    
+    <div class="expect"><strong>Pass if:</strong> A diary number is assigned (e.g. GOW-…). Matter detail page opens. Journey shows Registered.</div>
+    <div class="mark" data-id="UAT-P03-02a"></div>
+  </div>
+</div><div class="step">
+  <div class="step-n">2</div>
+  <div>
+    <span class="who">Still speaker · same file</span>
+    <span class="where">Matter page → Overview + Notes</span>
+    <h3>Noting sheet + Generate / Accept summary (EN then URDU)</h3>
+    
+    <ol class="do"><li>Open the <strong>Notes</strong> (or noting) section / tab</li><li>Add a noting paragraph with the text below → save / submit note</li><li>Back on Overview, find panel <strong>Generate summary / Accept summary</strong></li><li>Language dropdown = <strong>English</strong> → click <strong>Generate summary</strong></li><li>Read the textarea → click <strong>Accept summary</strong></li><li>Change language to <strong>اردو</strong> → <strong>Generate summary</strong> again (must not show Internal server error)</li><li>Optionally Accept the Urdu summary</li></ol>
+    <div class="data"><div class="row"><span class="k">Note text</span><span class="v" data-v>Para 1: UAT-P03 Committee visit file registered. Route Sec Gen.</span><button type="button" class="cp">Copy</button></div></div>
+    
+    <div class="expect"><strong>Pass if:</strong> Noting appears numbered. EN summary accepted with timestamp. Urdu generate succeeds (UTF-8 DB).</div>
+    <div class="mark" data-id="UAT-P03-02b"></div>
+  </div>
+</div><div class="step">
+  <div class="step-n">3</div>
+  <div>
+    <span class="who">Still speaker · same file</span>
+    <span class="where">Matter page → Route / procedure</span>
+    <h3>Route to Secretary General</h3>
+    
+    <ol class="do"><li>Scroll to <strong>Route / procedure</strong></li><li>In the user dropdown, choose <strong>Secretary General</strong> (display name for secgen)</li><li>Paste Procedure text below</li><li>Optional: set a due date 3 days ahead</li><li>Click <strong>Route</strong></li><li>Confirm Journey / route steps update</li></ol>
+    <div class="data"><div class="row"><span class="k">Procedure</span><span class="v" data-v>Advise on Committee visit logistics (UAT-P03)</span><button type="button" class="cp">Copy</button></div></div>
+    
+    <div class="expect"><strong>Pass if:</strong> Status awaiting receipt / holder = Secretary General. Toast “Routed”.</div>
+    <div class="mark" data-id="UAT-P03-02c"></div>
+  </div>
+</div><div class="step">
+  <div class="step-n">4</div>
+  <div>
+    <span class="who">Logout → login as secgen</span>
+    <span class="where">Left nav → File movement  OR  Inbox  OR  Files</span>
+    <h3>Acknowledge → note → Complete procedure</h3>
+    
+    <ol class="do"><li>Top bar: logout → login page → pick <strong>Secretary General</strong> → password → sign in</li><li>Open <strong>File movement</strong> — find the file waiting for you — Open</li><li>On the matter page click <strong>Acknowledge receipt</strong></li><li>Add noting with the text below</li><li>Click <strong>Complete procedure</strong> (use outcome text below if a field appears; otherwise confirm toast)</li></ol>
+    <div class="data"><div class="row"><span class="k">Username</span><span class="v" data-v>secgen</span><button type="button" class="cp">Copy</button></div><div class="row"><span class="k">Password</span><span class="v" data-v>Tester@Office1</span><button type="button" class="cp">Copy</button></div><div class="row"><span class="k">Noting</span><span class="v" data-v>Visit feasible if Chamber free. Spec Sec to lock date and escort plan. (UAT-P03)</span><button type="button" class="cp">Copy</button></div><div class="row"><span class="k">Outcome</span><span class="v" data-v>Procedure complete — propose two alternate dates (UAT-P03).</span><button type="button" class="cp">Copy</button></div></div>
+    
+    <div class="expect"><strong>Pass if:</strong> Acknowledged toast; noting on sheet; procedure complete; file moves toward Speaker decision.</div>
+    <div class="mark" data-id="UAT-P03-02d"></div>
+  </div>
+</div></div>
+</details>
+<details class="mod" id="m03">
+  <summary><span class="mod-num">03</span> Decide → Directions → evidence → close<span class="mod-meta">Matter decide + Directions tracker · ~15 min</span></summary>
+  <div class="mod-body"><div class="step">
+  <div class="step-n">1</div>
+  <div>
+    <span class="who">Logout → login as speaker</span>
+    <span class="where">Files → open your INTERNAL matter → Decision section</span>
+    <h3>Record decision = DIRECTION</h3>
+    
+    <ol class="do"><li>Open your matter (search Subject or Files list)</li><li>Find decision form: set type to <strong>DIRECTION</strong> (or equivalent dropdown)</li><li>Fill Decision text, Direction title, Owner = <strong>Special Secretary</strong>, due date ~5 days</li><li>Click <strong>Record decision</strong></li></ol>
+    <div class="data"><div class="row"><span class="k">Decision text</span><span class="v" data-v>Proceed. Direction for visit logistics pack (UAT-P03).</span><button type="button" class="cp">Copy</button></div><div class="row"><span class="k">Direction title</span><span class="v" data-v>UAT-P03 Prepare Standing Committee visit logistics pack</span><button type="button" class="cp">Copy</button></div><div class="row"><span class="k">Owner</span><span class="v" data-v>Special Secretary</span><button type="button" class="cp">Copy</button></div></div>
+    
+    <div class="expect"><strong>Pass if:</strong> Toast “Decision recorded”. Direction appears under Directions. Spec Sec notified in Inbox.</div>
+    <div class="mark" data-id="UAT-P03-03a"></div>
+  </div>
+</div><div class="step">
+  <div class="step-n">2</div>
+  <div>
+    <span class="who">Logout → login as specsec</span>
+    <span class="where">Left nav → Directions</span>
+    <h3>Start work + submit evidence (text AND file)</h3>
+    
+    <ol class="do"><li>Login as Special Secretary (<code>specsec</code> / password)</li><li>Open <strong>Directions</strong> → find title starting with your pack tag</li><li>Click <strong>Start work</strong></li><li>Enter Evidence text below</li><li>Choose a small file (create a .txt on your PC if needed) — both text and file are required</li><li>Click the primary submit evidence button</li></ol>
+    <div class="data"><div class="row"><span class="k">Username</span><span class="v" data-v>specsec</span><button type="button" class="cp">Copy</button></div><div class="row"><span class="k">Password</span><span class="v" data-v>Tester@Office1</span><button type="button" class="cp">Copy</button></div><div class="row"><span class="k">Evidence text</span><span class="v" data-v>Pack: two dates, room, escort, refreshments — draft attached. (UAT-P03)</span><button type="button" class="cp">Copy</button></div></div>
+    
+    <div class="expect"><strong>Pass if:</strong> Status moves to Evidence submitted (KPI / column updates).</div>
+    <div class="mark" data-id="UAT-P03-03b"></div>
+  </div>
+</div><div class="step">
+  <div class="step-n">3</div>
+  <div>
+    <span class="who">Logout → login as speaker</span>
+    <span class="where">Directions → then matter Close</span>
+    <h3>Verify evidence and close the matter</h3>
+    
+    <ol class="do"><li>Open <strong>Directions</strong> → <strong>Verify</strong> / accept evidence (primary button)</li><li>Open the linked matter → use Close / outcome control</li><li>Paste close outcome below</li></ol>
+    <div class="data"><div class="row"><span class="k">Close outcome</span><span class="v" data-v>UAT-P03 complete — logistics pack accepted.</span><button type="button" class="cp">Copy</button></div></div>
+    
+    <div class="expect"><strong>Pass if:</strong> Direction verified/closed. Matter status CLOSED. Journey shows full trail.</div>
+    <div class="mark" data-id="UAT-P03-03c"></div>
+  </div>
+</div></div>
+</details>
+<details class="mod" id="m04">
+  <summary><span class="mod-num">04</span> Confidential vault<span class="mod-meta">Files register CONFIDENTIAL · ~10 min</span></summary>
+  <div class="mod-body"><div class="step">
+  <div class="step-n">1</div>
+  <div>
+    <span class="who">Account: speaker</span>
+    <span class="where">Files &amp; documents → + Register new matter</span>
+    <h3>Register CONFIDENTIAL + unlock + download reason</h3>
+    
+    <ol class="do"><li>Click <strong>+ Register new matter</strong></li><li>Set Classification = <strong>CONFIDENTIAL</strong></li><li>File password field appears — enter vault password below (min 12)</li><li>Register → Open matter (or unlock from list with password)</li><li>Unlock vault if prompted</li><li>Attachments: upload a tiny file</li><li>Download: try reason <code>ok</code> (must fail) then the good reason</li></ol>
+    <div class="data"><div class="row"><span class="k">Subject</span><span class="v" data-v>UAT-P03 Confidential — committee witness list notes</span><button type="button" class="cp">Copy</button></div><div class="row"><span class="k">Sender</span><span class="v" data-v>Committee Branch (Confidential)</span><button type="button" class="cp">Copy</button></div><div class="row"><span class="k">Body</span><span class="v" data-v>CONFIDENTIAL UAT-P03. Witness list notes — vault only.</span><button type="button" class="cp">Copy</button></div><div class="row"><span class="k">Classification</span><span class="v" data-v>CONFIDENTIAL</span><button type="button" class="cp">Copy</button></div><div class="row"><span class="k">File password</span><span class="v" data-v>VaultTest!01</span><button type="button" class="cp">Copy</button></div><div class="row"><span class="k">Bad reason</span><span class="v" data-v>ok</span><button type="button" class="cp">Copy</button></div><div class="row"><span class="k">Good reason</span><span class="v" data-v>Official review for authorised office use</span><button type="button" class="cp">Copy</button></div></div>
+    
+    <div class="expect"><strong>Pass if:</strong> Short reason rejected; good reason downloads. Vault unlock works with VaultTest!01.</div>
+    <div class="mark" data-id="UAT-P03-04a"></div>
+  </div>
+</div></div>
+</details>
+<details class="mod" id="m05">
+  <summary><span class="mod-num">05</span> Dak register (R&amp;I)<span class="mod-meta">Left nav: Dak register (R&amp;I) · ~8 min</span></summary>
+  <div class="mod-body"><div class="step">
+  <div class="step-n">1</div>
+  <div>
+    <span class="who">Logout → login as secgen</span>
+    <span class="where">Left nav → Dak register (R&amp;I)</span>
+    <h3>Stamp IN then OUT</h3>
+    
+    <ol class="do"><li>Open <strong>Dak register (R&I)</strong></li><li>Under <strong>Stamp dak</strong>, Direction = <strong>IN — Received</strong></li><li>Fill From, Subject, Channel = HAND, Classification = INTERNAL → submit Stamp</li><li>Change Direction to <strong>OUT — Despatched</strong></li><li>Fill To + Subject + Channel = INTERNAL → Stamp</li><li>Use filters Received (IN) / Despatched (OUT) to confirm both rows</li></ol>
+    <div class="data"><div class="row"><span class="k">IN From</span><span class="v" data-v>Standing Committee Secretariat</span><button type="button" class="cp">Copy</button></div><div class="row"><span class="k">IN Subject</span><span class="v" data-v>UAT-P03 Incoming dak — proposed visit dates</span><button type="button" class="cp">Copy</button></div><div class="row"><span class="k">OUT To</span><span class="v" data-v>Committee Branch — Secretary</span><button type="button" class="cp">Copy</button></div><div class="row"><span class="k">OUT Subject</span><span class="v" data-v>UAT-P03 Outward — provisional acceptance of visit window</span><button type="button" class="cp">Copy</button></div></div>
+    
+    <div class="expect"><strong>Pass if:</strong> Two new rows with stamp time and your officer name.</div>
+    <div class="mark" data-id="UAT-P03-05a"></div>
+  </div>
+</div></div>
+</details>
+<details class="mod" id="m06">
+  <summary><span class="mod-num">06</span> Inbox &amp; Messages<span class="mod-meta">My desk · ~8 min</span></summary>
+  <div class="mod-body"><div class="step">
+  <div class="step-n">1</div>
+  <div>
+    <span class="who">Account: speaker</span>
+    <span class="where">Left nav → Appointment inbox · Encrypted messages</span>
+    <h3>Check Inbox, then message Sec Gen</h3>
+    
+    <ol class="do"><li>Open <strong>Inbox</strong> — confirm notices from routing / directions exist</li><li>Open <strong>Messages</strong> (or from Staff directory → Message)</li><li>Start / open thread with Secretary General</li><li>Send the message body below</li></ol>
+    <div class="data"><div class="row"><span class="k">Message</span><span class="v" data-v>UAT-P03: Please confirm Chamber availability for the Committee visit options.</span><button type="button" class="cp">Copy</button></div></div>
+    
+    <div class="expect"><strong>Pass if:</strong> Message sent; thread visible.</div>
+    <div class="mark" data-id="UAT-P03-06a"></div>
+  </div>
+</div><div class="step">
+  <div class="step-n">2</div>
+  <div>
+    <span class="who">Logout → secgen</span>
+    <span class="where">Messages</span>
+    <h3>Read and reply</h3>
+    
+    <ol class="do"><li>Login as secgen</li><li>Open Messages → open the thread</li><li>Reply with: <code>UAT-P03: Noted, will follow up.</code></li></ol>
+    
+    
+    <div class="expect"><strong>Pass if:</strong> Reply visible when speaker reopens the thread.</div>
+    <div class="mark" data-id="UAT-P03-06b"></div>
+  </div>
+</div></div>
+</details>
+<details class="mod" id="m07">
+  <summary><span class="mod-num">07</span> Meetings &amp; Schedule<span class="mod-meta">Calendar &amp; media · ~15 min</span></summary>
+  <div class="mod-body"><div class="step">
+  <div class="step-n">1</div>
+  <div>
+    <span class="who">Account: secgen → then speaker</span>
+    <span class="where">Left nav → Meetings</span>
+    <h3>Create meeting → Speaker approves → action</h3>
+    
+    <ol class="do"><li>As secgen: open <strong>Meetings</strong> → create / request new meeting</li><li>Fill Title, Location, Brief (and screening fields if shown)</li><li>Save — if conflict UI appears, pick an alternative or Force once</li><li>Logout → speaker → open the meeting → <strong>Approve</strong></li><li>Add action with title below; owner Special Secretary; create linked direction if checkbox exists</li></ol>
+    <div class="data"><div class="row"><span class="k">Title</span><span class="v" data-v>UAT-P03 Pre-brief — Standing Committee visit</span><button type="button" class="cp">Copy</button></div><div class="row"><span class="k">Location</span><span class="v" data-v>Speaker Chamber</span><button type="button" class="cp">Copy</button></div><div class="row"><span class="k">Brief</span><span class="v" data-v>Internal pre-brief with Spec Sec and security. 30 minutes. (UAT-P03)</span><button type="button" class="cp">Copy</button></div><div class="row"><span class="k">Action title</span><span class="v" data-v>UAT-P03 Confirm escort roster with security</span><button type="button" class="cp">Copy</button></div></div>
+    
+    <div class="expect"><strong>Pass if:</strong> Meeting APPROVED; action/direction linked.</div>
+    <div class="mark" data-id="UAT-P03-07a"></div>
+  </div>
+</div><div class="step">
+  <div class="step-n">2</div>
+  <div>
+    <span class="who">Account: speaker</span>
+    <span class="where">Left nav → Schedule</span>
+    <h3>Book diary then force overlap</h3>
+    
+    <ol class="do"><li>Open <strong>Schedule</strong></li><li>Create item with first title — tomorrow 11:00–12:00 (adjust if needed)</li><li>Create second item overlapping the same hour with second title</li><li>Confirm conflict banner + suggested alternatives</li><li>Choose an alternative OR Force-book once</li></ol>
+    <div class="data"><div class="row"><span class="k">First title</span><span class="v" data-v>UAT-P03 Diary — committee pre-brief</span><button type="button" class="cp">Copy</button></div><div class="row"><span class="k">Overlap title</span><span class="v" data-v>UAT-P03 Overlap attempt — conflict UI</span><button type="button" class="cp">Copy</button></div></div>
+    
+    <div class="expect"><strong>Pass if:</strong> Conflict UI appears; diary shows your items.</div>
+    <div class="mark" data-id="UAT-P03-07b"></div>
+  </div>
+</div></div>
+</details>
+<details class="mod" id="m08">
+  <summary><span class="mod-num">08</span> Call register<span class="mod-meta">Files &amp; decisions → Call register · ~8 min</span></summary>
+  <div class="mod-body"><div class="step">
+  <div class="step-n">1</div>
+  <div>
+    <span class="who">Account: speaker</span>
+    <span class="where">Left nav → Call register</span>
+    <h3>Log call and link matter if listed</h3>
+    
+    <ol class="do"><li>Open <strong>Call register</strong></li><li>Open new call form</li><li>Direction INBOUND; fill Party + Summary; Priority NORMAL</li><li>If matter picker lists your INTERNAL file, link it</li><li>Save / Log call</li></ol>
+    <div class="data"><div class="row"><span class="k">Party</span><span class="v" data-v>Committee Secretary</span><button type="button" class="cp">Copy</button></div><div class="row"><span class="k">Summary</span><span class="v" data-v>UAT-P03 Call: lock preferred visit date and guest count.</span><button type="button" class="cp">Copy</button></div></div>
+    
+    <div class="expect"><strong>Pass if:</strong> Call appears in table; optional link to matter shown.</div>
+    <div class="mark" data-id="UAT-P03-08a"></div>
+  </div>
+</div></div>
+</details>
+<details class="mod" id="m09">
+  <summary><span class="mod-num">09</span> Remote e-sign<span class="mod-meta">Remote work &amp; E-sign · ~10 min</span></summary>
+  <div class="mod-body"><div class="step">
+  <div class="step-n">1</div>
+  <div>
+    <span class="who">Account: speaker (requester and signer)</span>
+    <span class="where">Matter e-sign panel OR Remote work &amp; E-sign</span>
+    <h3>Request seal → Review &amp; seal → Verify</h3>
+    
+    <ol class="do"><li>Open your INTERNAL matter → Remote e-sign panel, OR open <strong>Remote work & E-sign</strong> → <strong>+ Request remote seal</strong></li><li>Select the matter; Designated signer = Office Speaker (yourself)</li><li>Purpose + Method = Local PKI (RSA-SHA256)</li><li>Click <strong>Request remote seal</strong> / Queue</li><li>On Remote page, pending card → <strong>Review & seal</strong></li><li>Read preview hash → click <strong>E-Sign & Seal Document</strong></li><li>In ledger click <strong>Verify seal</strong></li></ol>
+    <div class="data"><div class="row"><span class="k">Purpose</span><span class="v" data-v>UAT-P03 Seal committee visit logistics put-up</span><button type="button" class="cp">Copy</button></div></div>
+    
+    <div class="expect"><strong>Pass if:</strong> Status SIGNED. Verify shows valid RSA + hash. No “Document changed since preview” error.</div>
+    <div class="mark" data-id="UAT-P03-09a"></div>
+  </div>
+</div></div>
+</details>
+<details class="mod" id="m10">
+  <summary><span class="mod-num">10</span> Speeches, Press, Greetings<span class="mod-meta">Calendar &amp; media · ~25 min</span></summary>
+  <div class="mod-body"><div class="step">
+  <div class="step-n">1</div>
+  <div>
+    <span class="who">specsec → speaker</span>
+    <span class="where">Left nav → Speeches</span>
+    <h3>Draft speech → Submit → Authorize → Prompter</h3>
+    
+    <ol class="do"><li>Login as specsec → <strong>Speeches</strong> → new / draft form</li><li>Fill Title + Body (EN); optional matter link</li><li>If AI assist used, complete human-review checkbox/action</li><li>Click <strong>Submit for authorization</strong></li><li>Logout → speaker → open speech → <strong>Authorize speech</strong></li><li>Open prompter view briefly (scroll/font), then close</li></ol>
+    <div class="data"><div class="row"><span class="k">Title</span><span class="v" data-v>UAT-P03 Welcome remarks — Committee visit</span><button type="button" class="cp">Copy</button></div><div class="row"><span class="k">Body</span><span class="v" data-v>Members of the Standing Committee, welcome. Your oversight strengthens our parliamentary work. (UAT-P03)</span><button type="button" class="cp">Copy</button></div></div>
+    
+    <div class="expect"><strong>Pass if:</strong> Speech APPROVED; prompter shows text.</div>
+    <div class="mark" data-id="UAT-P03-10a"></div>
+  </div>
+</div><div class="step">
+  <div class="step-n">2</div>
+  <div>
+    <span class="who">specsec → speaker</span>
+    <span class="where">Left nav → Press &amp; media</span>
+    <h3>Draft press → Submit → Authorize</h3>
+    
+    <ol class="do"><li>As specsec: <strong>Press & media</strong> → new release</li><li>Title + Body → human review if needed → Submit</li><li>As speaker: Approve / Dispatch as available</li></ol>
+    <div class="data"><div class="row"><span class="k">Title</span><span class="v" data-v>UAT-P03 Note — Standing Committee visit (routine)</span><button type="button" class="cp">Copy</button></div><div class="row"><span class="k">Body</span><span class="v" data-v>A Standing Committee visit is being scheduled as routine parliamentary business. (UAT-P03)</span><button type="button" class="cp">Copy</button></div></div>
+    
+    <div class="expect"><strong>Pass if:</strong> Release APPROVED or DISPATCHED.</div>
+    <div class="mark" data-id="UAT-P03-10b"></div>
+  </div>
+</div><div class="step">
+  <div class="step-n">3</div>
+  <div>
+    <span class="who">specsec → speaker</span>
+    <span class="where">Left nav → Greeting cards</span>
+    <h3>Greeting card → Authorize → Dispatch</h3>
+    
+    <ol class="do"><li>As specsec: create card — Occasion, Recipient, Message, channel PROTOCOL_ECARD</li><li>Submit after human review if required</li><li>As speaker: Authorize → Dispatch</li></ol>
+    <div class="data"><div class="row"><span class="k">Occasion</span><span class="v" data-v>UAT-P03 Welcome card — visiting Committee members</span><button type="button" class="cp">Copy</button></div><div class="row"><span class="k">Recipient</span><span class="v" data-v>Standing Committee members and secretariat</span><button type="button" class="cp">Copy</button></div><div class="row"><span class="k">Message</span><span class="v" data-v>Welcome to the Speaker Office. We look forward to a constructive visit. (UAT-P03)</span><button type="button" class="cp">Copy</button></div></div>
+    
+    <div class="expect"><strong>Pass if:</strong> Card DISPATCHED with GC / dispatch reference.</div>
+    <div class="mark" data-id="UAT-P03-10c"></div>
+  </div>
+</div></div>
+</details>
+<details class="mod" id="m11">
+  <summary><span class="mod-num">11</span> Work records, People, Search, AI, Audit<span class="mod-meta">Research &amp; records + Governance · ~20 min</span></summary>
+  <div class="mod-body"><div class="step">
+  <div class="step-n">1</div>
+  <div>
+    <span class="who">Account: speaker</span>
+    <span class="where">Left nav → Work records</span>
+    <h3>Create work record → Submit → Approve + check filters</h3>
+    
+    <ol class="do"><li>Open <strong>Work records</strong> → <strong>+ New work record</strong></li><li>Category BRIEF; fill Title + Text → Save draft</li><li>Actions → Submit for approval → Approve (Speaker)</li><li>Use filters Briefs / Media / Correspondence — confirm sibling rows + Open module</li></ol>
+    <div class="data"><div class="row"><span class="k">Title</span><span class="v" data-v>UAT-P03 Legislative note — visit room checklist</span><button type="button" class="cp">Copy</button></div><div class="row"><span class="k">Text</span><span class="v" data-v>Room AV, nameplates, water, security lane, media exclusion zone. (UAT-P03)</span><button type="button" class="cp">Copy</button></div></div>
+    
+    <div class="expect"><strong>Pass if:</strong> WR-… code; APPROVED; deep links open Speeches/Press/Calls.</div>
+    <div class="mark" data-id="UAT-P03-11a"></div>
+  </div>
+</div><div class="step">
+  <div class="step-n">2</div>
+  <div>
+    <span class="who">speaker · then admin</span>
+    <span class="where">Staff directory · Search · AI helper · Audit dashboard</span>
+    <h3>Directory, search, AI question, audit</h3>
+    
+    <ol class="do"><li>Open <strong>Staff directory</strong> — search “Secretary” — Message link works</li><li>Open <strong>Search</strong> — query your pack tag</li><li>Open <strong>AI helper</strong> — ask a short question about your tag / open work</li><li>Logout → <code>admin</code> → <strong>Audit dashboard</strong> — find your actions; verify chain if shown</li></ol>
+    <div class="data"><div class="row"><span class="k">Search</span><span class="v" data-v>UAT-P03</span><button type="button" class="cp">Copy</button></div><div class="row"><span class="k">Admin user</span><span class="v" data-v>admin</span><button type="button" class="cp">Copy</button></div><div class="row"><span class="k">Admin password</span><span class="v" data-v>Tester@Office1</span><button type="button" class="cp">Copy</button></div></div>
+    
+    <div class="expect"><strong>Pass if:</strong> Search hits your records; AI responds; audit lists create/route/seal/approve events.</div>
+    <div class="mark" data-id="UAT-P03-11b"></div>
+  </div>
+</div></div>
+</details>
+
+<section class="card" id="feedback">
+  <h2>Finish</h2>
+  <p class="lead">Click <strong>Copy results</strong> and paste into email/chat with your pack id <code>UAT-P03</code>.</p>
+  <div class="callout warn">Do not run automated smoke against the shared preview during UAT.</div>
+  <div class="actions"><button class="btn primary" type="button" id="copy-results-2">Copy results</button></div>
+</section>
+<footer>Pack 03 · UAT-P03 · Government Office Workflow</footer>
+</div>
+<script>
+(function(){
+  var PACK="UAT-P03";
+  document.querySelectorAll(".mark").forEach(function(el){
+    var id=el.getAttribute("data-id")||"S";
+    el.innerHTML='<label><input type="radio" name="'+id+'" value="Done"/> Done</label>'+
+      '<label><input type="radio" name="'+id+'" value="Fail"/> Fail</label>'+
+      '<label><input type="radio" name="'+id+'" value="Blocked"/> Blocked</label>'+
+      '<textarea placeholder="Note if Fail / Blocked"></textarea>';
+  });
+  document.querySelectorAll("button[data-copy], .cp").forEach(function(btn){
+    btn.addEventListener("click",function(){
+      var text=btn.getAttribute("data-copy");
+      if(!text){var v=btn.parentElement&&btn.parentElement.querySelector("[data-v]");text=v?v.textContent:"";}
+      if(!text)return;
+      navigator.clipboard.writeText(text).then(function(){var o=btn.textContent;btn.textContent="Copied";setTimeout(function(){btn.textContent=o},900)});
+    });
+  });
+  document.getElementById("expand-all").onclick=function(){document.querySelectorAll("details.mod").forEach(function(d){d.open=true})};
+  function copyResults(){
+    var lines=["UAT results — "+PACK,"Pack id: "+PACK,"Date: "+new Date().toISOString().slice(0,10),"Environment: https://office-workflow-preview.walkwell.pk/login","","Step | Result | Notes"];
+    document.querySelectorAll(".mark").forEach(function(el){
+      var id=el.getAttribute("data-id");
+      var c=el.querySelector('input[type=radio]:checked');
+      var n=(el.querySelector("textarea")||{}).value||"";
+      lines.push(id+" | "+(c?c.value:"-")+" | "+n.replace(/\n/g," "));
+    });
+    lines.push("","Blockers:","UX issues:","Missing vs office practice:");
+    navigator.clipboard.writeText(lines.join("\n"));
+    alert("Results copied.");
+  }
+  document.getElementById("copy-results").onclick=copyResults;
+  document.getElementById("copy-results-2").onclick=copyResults;
+})();
+</script>
+</body></html>

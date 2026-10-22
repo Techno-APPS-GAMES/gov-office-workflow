@@ -137,11 +137,11 @@ Claiming “100% of everything including Hansard + live VAPT” in one sprint is
 | ID | Item | Status |
 |----|------|--------|
 | C.01 | Questions / parliamentary business | TODO (scaffold only) |
-| C.02 | Speeches / talking points grounded drafting | PARTIAL module |
-| C.03 | Protocol correspondence depth | PARTIAL letters |
-| C.04 | Call logging | PARTIAL module |
-| C.05 | Remote review/approval channels | PARTIAL module |
-| C.06 | Press / social review | PARTIAL module |
+| C.02 | Speeches / talking points grounded drafting | DONE (pilot; hardware prompter / Hansard = later) |
+| C.03 | Protocol correspondence depth | DONE greetings pilot (+ letters remain operational) |
+| C.04 | Call logging | DONE (pilot manual log → meeting/direction; CTI/PBX = later) |
+| C.05 | Remote review/approval channels | DONE (pilot local PKI + wet-ink; ECAC CSP = Tier B) |
+| C.06 | Press / social review | DONE (pilot; live wire/social APIs = later) |
 | C.07 | Legislative search / bill track / Hansard / translation | TODO |
 
 ---

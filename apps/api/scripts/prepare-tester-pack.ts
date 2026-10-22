@@ -1,12 +1,15 @@
 ﻿/**
- * Wipe all transactional data and load a clean tester pack:
- * staff accounts + route templates + exactly 3 curated records per major area.
+ * Wipe transactional data and reset staff for UAT.
  *
  * Usage:
+ *   npm run prepare:uat -w @gow/api
+ *     Clean slate — only accounts + route templates (testers create UAT-FLOW… data).
  *   npm run prepare:testers -w @gow/api
+ *     Same wipe, then optional demo TC-F sample pack (legacy).
+ *   npm run prepare:testers -w @gow/api -- --samples
+ *     Explicitly load TC-F sample matters after wipe.
  *
  * Password: TESTER_PASSWORD or SEED_PASSWORD or Tester@Office1
- * (ASCII-only seed strings for Windows Postgres client_encoding safety.)
  */
 import {
   PrismaClient,
@@ -26,6 +29,8 @@ const prisma = new PrismaClient();
 const DEFAULT_PASSWORD = 'Tester@Office1';
 const VAULT_PASSWORD = 'VaultTest!01';
 
+const STAFF = ['speaker', 'secgen', 'specsec', 'dgit', 'admin'] as const;
+
 async function wipeTransactional() {
   await prisma.messageAttachment.deleteMany();
   await prisma.message.deleteMany();
@@ -38,6 +43,7 @@ async function wipeTransactional() {
   await prisma.callRecord.deleteMany();
   await prisma.workItem.deleteMany();
   await prisma.esignRecord.deleteMany();
+  await prisma.mediaClip.deleteMany();
   await prisma.speech.deleteMany();
   await prisma.pressRelease.deleteMany();
   await prisma.greetingCard.deleteMany();
@@ -52,6 +58,12 @@ async function wipeTransactional() {
   await prisma.matter.deleteMany();
   await prisma.auditEvent.deleteMany();
   await prisma.refreshToken.deleteMany();
+}
+
+async function removeExtraUsers() {
+  await prisma.user.deleteMany({
+    where: { username: { notIn: [...STAFF] } },
+  });
 }
 
 async function ensureUsers(passwordHash: string) {
@@ -592,10 +604,21 @@ async function seedTestData(
 }
 
 async function main() {
+  const args = process.argv.slice(2);
+  const wantSamples =
+    args.includes('--samples') ||
+    process.env.UAT_SAMPLES === 'true' ||
+    process.env.npm_lifecycle_event === 'prepare:testers-samples';
+  // Default (prepare:uat / prepare:testers): clean slate for TESTER_HANDOFF flows.
+  const clean = !wantSamples;
+
   const plain =
     process.env.TESTER_PASSWORD || process.env.SEED_PASSWORD || DEFAULT_PASSWORD;
   console.log('Wiping transactional data...');
   await wipeTransactional();
+
+  console.log('Removing extra (non-staff) accounts...');
+  await removeExtraUsers();
 
   console.log('Refreshing staff accounts...');
   const passwordHash = await bcrypt.hash(plain, 12);
@@ -607,17 +630,34 @@ async function main() {
   console.log('Ensuring route templates...');
   await ensureTemplates();
 
-  console.log('Seeding 3 test records per area...');
-  const summary = await seedTestData(byUser, vaultHash);
+  await prisma.systemSetting.upsert({
+    where: { key: 'uat.pack.version' },
+    update: { value: clean ? 'clean-1.0' : 'samples-1.0' },
+    create: { key: 'uat.pack.version', value: clean ? 'clean-1.0' : 'samples-1.0' },
+  });
 
   console.log('');
-  console.log('========== TESTER PACK READY ==========');
+  if (clean) {
+    console.log('========== UAT CLEAN SLATE READY ==========');
+    console.log(`Password (all roles): ${plain}`);
+    console.log(`Vault password for Flow 2 (when you register CONFIDENTIAL): ${VAULT_PASSWORD}`);
+    console.log('Accounts: speaker | secgen | specsec | dgit | admin');
+    console.log('Matters / dak / meetings / etc.: EMPTY — testers create UAT-FLOW… data');
+    console.log('See docs/TESTER_HANDOFF.html');
+    console.log('===========================================');
+    return;
+  }
+
+  console.log('Seeding TC-F sample records...');
+  const summary = await seedTestData(byUser, vaultHash);
+
+  console.log('========== TESTER SAMPLES READY ==========');
   console.log(`Password (all roles): ${plain}`);
   console.log(`Confidential vault password (TC-F-02): ${summary.vaultPassword}`);
   console.log('Accounts: speaker | secgen | specsec | dgit | admin');
   console.log('Matters:', summary.matters.join(', '));
-  console.log('See docs/TESTER_HANDOFF.md for full test cases.');
-  console.log('=======================================');
+  console.log('See docs/TESTER_HANDOFF.md');
+  console.log('==========================================');
 }
 
 main()
