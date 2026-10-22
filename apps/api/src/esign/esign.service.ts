@@ -15,6 +15,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { canSeeAllMatters } from '../auth/access';
+import { StorageService } from '../storage/storage.service';
+import { scanUpload } from '../storage/virus-scan.hook';
 
 export type EsignMethod = 'LOCAL_PKI' | 'WET_INK';
 
@@ -30,6 +32,7 @@ export class EsignService {
     private prisma: PrismaService,
     private audit: AuditService,
     private notifications: NotificationsService,
+    private storage: StorageService,
   ) {}
 
   private async assertMatterForUser(matterId: string, user: { id: string; role: Role }) {
@@ -117,6 +120,22 @@ export class EsignService {
    * Deliberately excludes wall-clock time so preview confirmHash matches sign
    * (signedAt is stored on the record / seal metadata, not inside the digest).
    */
+  private async matterContentDigests(matterId: string) {
+    const matter = await this.prisma.matter.findUnique({
+      where: { id: matterId },
+      select: { body: true },
+    });
+    const attachments = await this.prisma.attachment.findMany({
+      where: { matterId },
+      select: { sha256: true },
+    });
+    const bodySha256 = createHash('sha256')
+      .update(matter?.body || '')
+      .digest('hex');
+    const attachmentSha256s = attachments.map((a) => a.sha256).sort();
+    return { bodySha256, attachmentSha256s };
+  }
+
   private buildPayload(input: {
     matterId: string;
     diaryNo: string;
@@ -127,19 +146,56 @@ export class EsignService {
     certId: string;
     purpose: string | null;
     method: string;
+    bodySha256: string;
+    attachmentSha256s: string[];
   }) {
     return JSON.stringify({
-      v: 1,
+      v: 2,
       matterId: input.matterId,
       diaryNo: input.diaryNo,
       subject: input.subject,
       decisionText: input.decisionText || '',
       classification: input.classification,
+      bodySha256: input.bodySha256,
+      attachmentSha256s: input.attachmentSha256s,
       signerId: input.signerId,
       certId: input.certId,
       purpose: input.purpose || '',
       method: input.method,
     });
+  }
+
+  private matterForPublicVerify(
+    matter: {
+      id: string;
+      diaryNo: string;
+      subject: string;
+      priority: string;
+      status: string;
+      classification: Classification;
+      decisionText: string | null;
+    } | null,
+  ) {
+    if (!matter) return null;
+    return {
+      id: matter.id,
+      diaryNo: matter.diaryNo,
+      status: matter.status,
+      priority: matter.priority,
+      classification: matter.classification,
+      subject:
+        matter.classification === Classification.CONFIDENTIAL
+          ? '[Confidential]'
+          : matter.subject.length > 120
+            ? `${matter.subject.slice(0, 120)}…`
+            : matter.subject,
+    };
+  }
+
+  private recordForPublicVerify<T extends { matter: Parameters<EsignService['matterForPublicVerify']>[0] }>(
+    rec: T,
+  ) {
+    return { ...rec, matter: this.matterForPublicVerify(rec.matter) };
   }
 
   private verifyLocalSeal(signatureJson: string) {
@@ -193,7 +249,7 @@ export class EsignService {
         status: rec.status,
         method: rec.method,
         reason: rec.revokeReason || 'Certificate has been revoked',
-        record: rec,
+        record: this.recordForPublicVerify(rec),
       };
     }
     if (rec.status === EsignStatus.DECLINED) {
@@ -203,7 +259,7 @@ export class EsignService {
         status: rec.status,
         method: rec.method,
         reason: rec.declineReason || 'Signer declined this seal request',
-        record: rec,
+        record: this.recordForPublicVerify(rec),
       };
     }
     if (rec.status !== EsignStatus.SIGNED) {
@@ -213,23 +269,53 @@ export class EsignService {
         status: rec.status,
         method: rec.method,
         reason: 'Certificate is not in a signed state',
-        record: rec,
+        record: this.recordForPublicVerify(rec),
       };
     }
 
     if (rec.method === 'WET_INK') {
+      let valid = true;
+      let reason =
+        'Wet-ink attestation recorded (manual authenticity path — not cryptographic)';
+      let digest = rec.documentHash;
+      let wetInkAttestation: unknown;
+      if (rec.signature) {
+        try {
+          const parsed = JSON.parse(rec.signature) as {
+            digest?: string;
+            payload?: string;
+            wetInkAttestation?: unknown;
+          };
+          wetInkAttestation = parsed.wetInkAttestation;
+          if (parsed.payload && parsed.digest) {
+            digest = parsed.digest;
+            const expected = createHash('sha256').update(parsed.payload).digest('hex');
+            if (parsed.digest !== expected) {
+              valid = false;
+              reason = 'Document hash mismatch — content may have been altered';
+            } else {
+              reason =
+                'Wet-ink attestation with SHA-256 document binding verified (not cryptographic signature)';
+            }
+          }
+        } catch {
+          valid = false;
+          reason = 'Wet-ink signature payload could not be parsed';
+        }
+      }
       return {
-        valid: true,
+        valid,
         certId: rec.certId,
         status: rec.status,
         method: rec.method,
-        digest: rec.documentHash,
+        digest,
         signedAt: rec.signedAt,
         signer: rec.signer,
-        matter: rec.matter,
+        matter: this.matterForPublicVerify(rec.matter),
         purpose: rec.purpose,
-        reason: 'Wet-ink scan recorded (manual authenticity path — not cryptographic)',
+        reason,
         wetInkNote: rec.wetInkNote,
+        wetInkAttestation,
       };
     }
 
@@ -239,7 +325,7 @@ export class EsignService {
         certId: rec.certId,
         status: rec.status,
         reason: 'Missing signature payload',
-        record: rec,
+        record: this.recordForPublicVerify(rec),
       };
     }
 
@@ -254,7 +340,7 @@ export class EsignService {
         digest: check.parsed?.digest || rec.documentHash,
         signedAt: rec.signedAt,
         signer: rec.signer,
-        matter: rec.matter,
+        matter: this.matterForPublicVerify(rec.matter),
         purpose: rec.purpose,
         provider: rec.provider,
         reason: check.reason,
@@ -265,7 +351,7 @@ export class EsignService {
         certId: rec.certId,
         status: rec.status,
         reason: 'Signature payload could not be parsed',
-        record: rec,
+        record: this.recordForPublicVerify(rec),
       };
     }
   }
@@ -337,6 +423,7 @@ export class EsignService {
     if (rec.signerId !== signerId) throw new ForbiddenException('Not the designated signer');
     if (rec.status !== EsignStatus.PENDING) throw new BadRequestException('Not pending');
 
+    const content = await this.matterContentDigests(rec.matterId);
     const payload = this.buildPayload({
       matterId: rec.matterId,
       diaryNo: rec.matter.diaryNo,
@@ -347,6 +434,7 @@ export class EsignService {
       certId: rec.certId || '',
       purpose: rec.purpose,
       method: rec.method,
+      ...content,
     });
     const documentHash = createHash('sha256').update(payload).digest('hex');
     return {
@@ -370,7 +458,7 @@ export class EsignService {
   async sign(
     id: string,
     signerId: string,
-    opts?: { wetInkNote?: string; confirmHash?: string },
+    opts?: { wetInkNote?: string; confirmHash?: string; scanFile?: Express.Multer.File },
   ) {
     const rec = await this.prisma.esignRecord.findUnique({
       where: { id },
@@ -384,6 +472,7 @@ export class EsignService {
     if (!signerUser) throw new ForbiddenException('Signer not found');
     await this.assertMatterForUser(rec.matterId, { id: signerId, role: signerUser.role });
 
+    const content = await this.matterContentDigests(rec.matterId);
     const payload = this.buildPayload({
       matterId: rec.matterId,
       diaryNo: rec.matter.diaryNo,
@@ -394,6 +483,7 @@ export class EsignService {
       certId: rec.certId || '',
       purpose: rec.purpose,
       method: rec.method,
+      ...content,
     });
     const documentHash = createHash('sha256').update(payload).digest('hex');
 
@@ -405,21 +495,53 @@ export class EsignService {
 
     if (rec.method === 'WET_INK') {
       const note = (opts?.wetInkNote || '').trim();
-      if (note.length < 8) {
-        throw new BadRequestException('Wet-ink path requires a note (≥8 chars) describing the scan');
+      const file = opts?.scanFile;
+      let wetInkAttestation: Record<string, string | number> | undefined;
+      if (file?.buffer?.length) {
+        const scan = await scanUpload(file.buffer, file.originalname);
+        if (!scan.clean) {
+          throw new BadRequestException(`Upload rejected by virus scan (${scan.engine})`);
+        }
+        const scanSha256 = createHash('sha256').update(file.buffer).digest('hex');
+        const storageKey = await this.storage.putObject(
+          file.buffer,
+          file.mimetype || 'application/octet-stream',
+          'wet-ink-scan',
+        );
+        wetInkAttestation = {
+          fileName: file.originalname.slice(0, 255),
+          contentType: file.mimetype || 'application/octet-stream',
+          sizeBytes: file.size,
+          sha256: scanSha256,
+          storageKey,
+        };
+      } else {
+        if (note.length < 40) {
+          throw new BadRequestException(
+            'Wet-ink requires a scan upload or an attestation note (≥40 chars mentioning the scan)',
+          );
+        }
+        if (!/scan/i.test(note)) {
+          throw new BadRequestException(
+            'Attestation note must describe the scanned wet signature (mention "scan")',
+          );
+        }
+        wetInkAttestation = { note: note.slice(0, 2000) };
       }
+      const storedNote = note.slice(0, 1000) || (wetInkAttestation.fileName as string) || '';
       const updated = await this.prisma.esignRecord.update({
         where: { id },
         data: {
           status: EsignStatus.SIGNED,
           documentHash,
-          wetInkNote: note.slice(0, 1000),
+          wetInkNote: storedNote,
           algorithm: 'WET_INK',
           signature: JSON.stringify({
             method: 'WET_INK',
             digest: documentHash,
             payload,
-            note,
+            note: storedNote,
+            wetInkAttestation,
           }),
           signedAt: new Date(),
         },
@@ -460,6 +582,8 @@ export class EsignService {
         signature: JSON.stringify({
           method: 'LOCAL_PKI',
           algorithm: 'RSA-SHA256',
+          pilotIntegritySeal: true,
+          note: 'Ephemeral key pair — pilot integrity seal, not HSM-backed',
           signature,
           publicKey: pubPem,
           digest: documentHash,
@@ -475,7 +599,7 @@ export class EsignService {
         rec.requestedById,
         'ESIGN',
         `Document sealed · ${rec.matter.diaryNo}`,
-        `RSA-SHA256 seal applied. Cert ${rec.certId}`,
+        `Pilot RSA integrity seal applied (not HSM). Cert ${rec.certId}`,
         id,
       );
     }

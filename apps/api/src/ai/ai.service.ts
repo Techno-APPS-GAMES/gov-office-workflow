@@ -2,6 +2,7 @@ import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/com
 import { Classification, Role } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { assertMatterReadable } from '../auth/access';
 
 @Injectable()
 export class AiService {
@@ -11,6 +12,8 @@ export class AiService {
     const endpoint = process.env.AI_ENDPOINT || '';
     const allowExternalTraining =
       String(process.env.AI_ALLOW_EXTERNAL_TRAINING || 'false').toLowerCase() === 'true';
+    const allowConfidentialRemote =
+      String(process.env.AI_ALLOW_CONFIDENTIAL_REMOTE || 'false').toLowerCase() === 'true';
     return {
       enabled: true,
       mode: endpoint ? 'remote' : 'local_briefing',
@@ -18,11 +21,20 @@ export class AiService {
       model: process.env.AI_MODEL || (endpoint ? null : 'local-grounded-briefing'),
       groundedOnly: true,
       allowExternalTraining,
+      allowConfidentialRemote,
       dataLeavesEnvironment: Boolean(endpoint),
       note: endpoint
-        ? 'Answers use the configured model endpoint with authorized record context only. External training of NA data is forbidden unless AI_ALLOW_EXTERNAL_TRAINING=true (default false).'
+        ? 'Answers use the configured model endpoint with authorized record context only. External training of NA data is forbidden unless AI_ALLOW_EXTERNAL_TRAINING=true (default false). CONFIDENTIAL matters never use a remote model unless AI_ALLOW_CONFIDENTIAL_REMOTE=true (default false).'
         : 'Local briefing mode — summarizes authorized records on this server; no external model call; no training on NA data.',
     };
+  }
+
+  private async assertVaultAccess(matterId: string, userId: string, role: Role) {
+    if (role === Role.ADMIN) return;
+    const grant = await this.prisma.vaultGrant.findFirst({
+      where: { matterId, userId, expiresAt: { gt: new Date() } },
+    });
+    if (!grant) throw new ForbiddenException('Confidential matter locked — unlock vault first');
   }
 
   private async loadMatterContext(
@@ -49,14 +61,9 @@ export class AiService {
       },
     });
     if (!matter) throw new BadRequestException('Matter not found');
-    if (matter.classification === Classification.CONFIDENTIAL && user.role !== Role.ADMIN) {
-      const grant = await this.prisma.vaultGrant.findFirst({
-        where: { matterId, userId: user.id, expiresAt: { gt: new Date() } },
-      });
-      const involved = matter.holderId === user.id || matter.createdById === user.id;
-      if (!grant && !involved && user.role !== Role.SPEAKER) {
-        throw new ForbiddenException('Vault unlock required for confidential AI context');
-      }
+    assertMatterReadable(matter, user);
+    if (matter.classification === Classification.CONFIDENTIAL) {
+      await this.assertVaultAccess(matterId, user.id, user.role);
     }
     return matter;
   }
@@ -163,6 +170,10 @@ export class AiService {
     matterId?: string,
   ) {
     if (!question?.trim()) throw new BadRequestException('Question required');
+    const maxQuestion = 2000;
+    if (question.length > maxQuestion) {
+      throw new BadRequestException(`Question too long (max ${maxQuestion} characters)`);
+    }
 
     let matter: Awaited<ReturnType<AiService['loadMatterContext']>> | null = null;
     let context = '';
@@ -170,22 +181,12 @@ export class AiService {
 
     if (matterId) {
       matter = await this.loadMatterContext(user, matterId);
-      const grantOk =
-        matter.classification !== Classification.CONFIDENTIAL ||
-        user.role === Role.ADMIN ||
-        (await this.prisma.vaultGrant.findFirst({
-          where: { matterId, userId: user.id, expiresAt: { gt: new Date() } },
-        }));
-      const body =
-        grantOk || matter.holderId === user.id || matter.createdById === user.id
-          ? matter.body.slice(0, 8000)
-          : '[Confidential body locked — unlock vault for full text]';
       context = JSON.stringify({
         diaryNo: matter.diaryNo,
         subject: matter.subject,
         status: matter.status,
         classification: matter.classification,
-        body,
+        body: matter.body.slice(0, 8000),
         decisionText: matter.decisionText,
         notes: matter.notes.map((n) => n.text),
         journey: matter.journeyEvents.map((j) => j.summary),
@@ -204,29 +205,51 @@ export class AiService {
     }
 
     const endpoint = process.env.AI_ENDPOINT;
+    const allowConfidentialRemote =
+      String(process.env.AI_ALLOW_CONFIDENTIAL_REMOTE || 'false').toLowerCase() === 'true';
     let answer: string;
     let mode: 'remote' | 'local_briefing';
 
-    if (endpoint) {
+    if (
+      endpoint &&
+      matter?.classification === Classification.CONFIDENTIAL &&
+      !allowConfidentialRemote
+    ) {
+      mode = 'local_briefing';
+      answer = this.localBriefing(question, matter, recent);
+    } else if (endpoint) {
       mode = 'remote';
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(process.env.AI_API_KEY ? { Authorization: `Bearer ${process.env.AI_API_KEY}` } : {}),
-        },
-        body: JSON.stringify({
-          model: process.env.AI_MODEL || 'client-approved',
-          messages: [
-            {
-              role: 'system',
-              content:
-                'You are a grounded government office assistant. Answer ONLY using the provided authorized record context. If insufficient, say so. Never invent diary numbers or decisions. Do not store or train on client data. When the user asks in Urdu or requests Urdu, reply with a clear Urdu summary plus a short English restatement. Flag that human review is required before any official use.',
-            },
-            { role: 'user', content: `Context:\n${context}\n\nQuestion:\n${question}` },
-          ],
-        }),
-      });
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 20_000);
+      let res: Response;
+      try {
+        res = await fetch(endpoint, {
+          method: 'POST',
+          signal: controller.signal,
+          headers: {
+            'Content-Type': 'application/json',
+            ...(process.env.AI_API_KEY ? { Authorization: `Bearer ${process.env.AI_API_KEY}` } : {}),
+          },
+          body: JSON.stringify({
+            model: process.env.AI_MODEL || 'client-approved',
+            messages: [
+              {
+                role: 'system',
+                content:
+                  'You are a grounded government office assistant. Answer ONLY using the provided authorized record context. If insufficient, say so. Never invent diary numbers or decisions. Do not store or train on client data. When the user asks in Urdu or requests Urdu, reply with a clear Urdu summary plus a short English restatement. Flag that human review is required before any official use.',
+              },
+              { role: 'user', content: `Context:\n${context}\n\nQuestion:\n${question}` },
+            ],
+          }),
+        });
+      } catch (e) {
+        if (e instanceof Error && e.name === 'AbortError') {
+          throw new BadRequestException('AI endpoint timed out after 20s');
+        }
+        throw e;
+      } finally {
+        clearTimeout(timeout);
+      }
       if (!res.ok) {
         const errText = await res.text();
         throw new BadRequestException(`AI endpoint error: ${res.status} ${errText.slice(0, 200)}`);

@@ -3,24 +3,39 @@ import ExcelJS from 'exceljs';
 import { PrismaService } from '../prisma/prisma.service';
 import { CryptoService } from '../crypto/crypto.service';
 
-/** Embedded Postgres on Windows often uses WIN1252 client encoding — keep audit ASCII-safe. */
-function asciiSafe(text: string) {
+/** Normalize punctuation only — keep Urdu/Unicode intact (DB must be UTF-8). */
+function normalizeSummary(text: string) {
   return (text || '')
-    .replace(/\u2192/g, '->') // →
-    .replace(/\u2190/g, '<-') // ←
-    .replace(/[\u2013\u2014\u2212]/g, '-') // – — −
-    .replace(/\u2026/g, '...') // …
+    .replace(/\u2192/g, '->')
+    .replace(/\u2190/g, '<-')
+    .replace(/[\u2013\u2014\u2212]/g, '-')
+    .replace(/\u2026/g, '...')
     .replace(/[\u2018\u2019]/g, "'")
     .replace(/[\u201C\u201D]/g, '"')
-    .replace(/[^\x09\x0A\x0D\x20-\x7E]/g, '?');
+    .slice(0, 2000);
 }
 
 @Injectable()
 export class AuditService {
+  private chainVerifyCache: {
+    at: number;
+    result: Awaited<ReturnType<AuditService['verifyChain']>>;
+  } | null = null;
+
   constructor(
     private prisma: PrismaService,
     private crypto: CryptoService,
   ) {}
+
+  private async cachedVerifyChain() {
+    const now = Date.now();
+    if (this.chainVerifyCache && now - this.chainVerifyCache.at < 60_000) {
+      return this.chainVerifyCache.result;
+    }
+    const result = await this.verifyChain();
+    this.chainVerifyCache = { at: now, result };
+    return result;
+  }
 
   async record(input: {
     actorId?: string | null;
@@ -31,32 +46,36 @@ export class AuditService {
     ip?: string;
     userAgent?: string;
   }) {
-    const summary = asciiSafe(input.summary);
-    const last = await this.prisma.auditEvent.findFirst({
-      orderBy: { seq: 'desc' },
-    });
-    const prevHash = last?.hash || 'GENESIS';
-    const material = [
-      prevHash,
-      input.actorId || '',
-      input.action,
-      input.entityType,
-      input.entityId || '',
-      summary,
-    ].join('|');
-    const hash = this.crypto.sha256(material);
-    return this.prisma.auditEvent.create({
-      data: {
-        actorId: input.actorId || null,
-        action: input.action,
-        entityType: input.entityType,
-        entityId: input.entityId || null,
-        summary,
-        ip: input.ip,
-        userAgent: input.userAgent,
+    const summary = normalizeSummary(input.summary);
+    // Serialize chain appends to avoid prevHash forks under concurrent writes.
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(87201401)`);
+      const last = await tx.auditEvent.findFirst({
+        orderBy: { seq: 'desc' },
+      });
+      const prevHash = last?.hash || 'GENESIS';
+      const material = [
         prevHash,
-        hash,
-      },
+        input.actorId || '',
+        input.action,
+        input.entityType,
+        input.entityId || '',
+        summary,
+      ].join('|');
+      const hash = this.crypto.sha256(material);
+      return tx.auditEvent.create({
+        data: {
+          actorId: input.actorId || null,
+          action: input.action,
+          entityType: input.entityType,
+          entityId: input.entityId || null,
+          summary,
+          ip: input.ip,
+          userAgent: input.userAgent,
+          prevHash,
+          hash,
+        },
+      });
     });
   }
 
@@ -120,7 +139,7 @@ export class AuditService {
       directions,
       matters,
     ] = await Promise.all([
-      this.verifyChain(),
+      this.cachedVerifyChain(),
       this.prisma.auditEvent.findFirst({ orderBy: { seq: 'desc' } }),
       this.prisma.matter.count({ where: { status: { notIn: [...closedMatter] } } }),
       this.prisma.auditEvent.count({ where: { createdAt: { gte: ago30 } } }),

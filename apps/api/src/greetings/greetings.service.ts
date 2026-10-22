@@ -8,6 +8,7 @@ import { PressStatus, Role } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { GREETING_OCCASIONS } from './occasions.data';
 
 function include() {
   return {
@@ -23,6 +24,10 @@ export class GreetingsService {
     private audit: AuditService,
     private notifications: NotificationsService,
   ) {}
+
+  listOccasions() {
+    return GREETING_OCCASIONS;
+  }
 
   list(status?: string) {
     const where =
@@ -136,7 +141,7 @@ export class GreetingsService {
 
   async update(
     id: string,
-    actorId: string,
+    actor: { id: string; role: Role },
     data: {
       occasion?: string;
       recipient?: string;
@@ -161,21 +166,18 @@ export class GreetingsService {
       throw new BadRequestException('Dispatched cards cannot be edited');
     }
 
+    const canEdit =
+      actor.id === existing.authorId ||
+      actor.role === Role.SPEAKER ||
+      actor.role === Role.SECRETARY_GENERAL ||
+      actor.role === Role.ADMIN;
+    if (!canEdit) throw new ForbiddenException();
+
     let matterId = existing.matterId;
     if (data.matterId !== undefined) {
       if (!data.matterId) matterId = null;
       else matterId = (await this.assertMatter(data.matterId))?.id || null;
     }
-
-    const contentChanged =
-      (data.message !== undefined && data.message.trim() !== existing.message) ||
-      (data.occasion !== undefined && data.occasion.trim() !== existing.occasion);
-
-    const reset =
-      contentChanged &&
-      (existing.status === PressStatus.APPROVED ||
-        existing.status === PressStatus.SUBMITTED ||
-        existing.status === PressStatus.REJECTED);
 
     let channel = existing.channel;
     if (data.channel !== undefined) {
@@ -184,6 +186,20 @@ export class GreetingsService {
         throw new BadRequestException('Invalid channel');
       }
     }
+
+    const publishableChanged =
+      (data.occasion !== undefined && data.occasion.trim() !== existing.occasion) ||
+      (data.recipient !== undefined && data.recipient.trim() !== existing.recipient) ||
+      (data.message !== undefined && data.message.trim() !== existing.message) ||
+      (data.titleUr !== undefined && (data.titleUr.trim() || null) !== existing.titleUr) ||
+      (data.messageUr !== undefined && (data.messageUr.trim() || null) !== existing.messageUr) ||
+      (data.style !== undefined && data.style !== existing.style) ||
+      (data.channel !== undefined && channel !== existing.channel);
+
+    const reset =
+      publishableChanged &&
+      (existing.status === PressStatus.APPROVED ||
+        existing.status === PressStatus.SUBMITTED);
 
     const g = await this.prisma.greetingCard.update({
       where: { id },
@@ -221,12 +237,13 @@ export class GreetingsService {
           data.aiAssisted !== undefined ? Boolean(data.aiAssisted) : existing.aiAssisted,
         humanReviewedAt: data.markHumanReviewed ? new Date() : existing.humanReviewedAt,
         approvedAt: reset ? null : existing.approvedAt,
+        rejectReason: reset ? null : existing.rejectReason,
         status: reset ? PressStatus.DRAFT : existing.status,
       },
       include: include(),
     });
     await this.audit.record({
-      actorId,
+      actorId: actor.id,
       action: 'GREETING_UPDATE',
       entityType: 'GreetingCard',
       entityId: id,

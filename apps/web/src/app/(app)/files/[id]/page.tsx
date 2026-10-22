@@ -336,7 +336,7 @@ function MatterDetailInner() {
               <button type="button" className="btn" onClick={() => run(() => api(`/files/${id}/acknowledge`, { method: 'POST' }), label('fd_toastAck'))}>
                 {label('files_acknowledge')}
               </button>
-              <button type="button" className="btn" onClick={() => run(() => api(`/files/${id}/complete-procedure`, { method: 'POST', json: { outcome: 'Procedure complete' } }), label('fd_toastProcComplete'))}>
+              <button type="button" className="btn" onClick={() => run(() => api(`/files/${id}/complete-procedure`, { method: 'POST', json: { outcome: 'PROCEDURE_COMPLETE' } }), label('fd_toastProcComplete'))}>
                 {label('files_completeProcedure')}
               </button>
             </div>
@@ -575,7 +575,7 @@ function MatterDetailInner() {
           <ul className="timeline">
             {(matter.journeyEvents || []).map((j: any) => (
               <li key={j.id}>
-                <strong>{enumLabel(lang, j.kind)}</strong> — {j.summary}
+                <strong>{enumLabel(lang, j.kind)}</strong> — {enumLabel(lang, j.summary)}
                 <div className="muted">{new Date(j.createdAt).toLocaleString()}</div>
               </li>
             ))}

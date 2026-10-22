@@ -52,14 +52,15 @@ export default function GuidePage() {
           </li>
         </ul>
       </div>
-      <div className="panel">
-        <h2>{label('gd_seed')}</h2>
-        <p className="muted">
-          {label('gd_seedPw')} <code dir="ltr">ChangeMe!Office1</code> {label('gd_seedOr')}{' '}
-          <code dir="ltr">SEED_PASSWORD</code>
-          {label('gd_seedClose')} {label('gd_seedUsers')}
-        </p>
-      </div>
+      {process.env.NEXT_PUBLIC_SHOW_SEED_CREDS === 'true' && (
+        <div className="panel">
+          <h2>{label('gd_seed')}</h2>
+          <p className="muted">
+            {label('gd_seedPw')} <code dir="ltr">SEED_PASSWORD</code>
+            {label('gd_seedClose')} {label('gd_seedUsers')}
+          </p>
+        </div>
+      )}
     </>
   );
 }

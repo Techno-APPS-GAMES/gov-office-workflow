@@ -115,6 +115,10 @@ export default function DirectionsPage() {
   const [historyId, setHistoryId] = useState<string | null>(null);
   const [activity, setActivity] = useState<Activity[]>([]);
   const [busy, setBusy] = useState(false);
+  const [staff, setStaff] = useState<{ id: string; displayName: string }[]>([]);
+  const [extendDue, setExtendDue] = useState<Record<string, string>>({});
+  const [reassignTo, setReassignTo] = useState<Record<string, string>>({});
+  const [clearNote, setClearNote] = useState<Record<string, string>>({});
   const isSpeaker = user?.role === 'SPEAKER' || user?.role === 'ADMIN';
 
   async function downloadEvidenceFile(directionId: string, fileName: string) {
@@ -177,6 +181,13 @@ export default function DirectionsPage() {
   useEffect(() => {
     load().catch(() => setItems([]));
   }, [load]);
+
+  useEffect(() => {
+    if (!isSpeaker) return;
+    api<{ id: string; displayName: string }[]>('/users')
+      .then(setStaff)
+      .catch(() => undefined);
+  }, [isSpeaker]);
 
   useLiveRefresh(load, [load]);
 
@@ -498,6 +509,105 @@ export default function DirectionsPage() {
                     >
                       {label('directions_escalate')}
                     </button>
+                  )}
+
+                {isSpeaker && d.status === 'ESCALATED' && (
+                  <div className="dir-evidence-form">
+                    <input
+                      placeholder={label('dr_clearEscalationNote')}
+                      value={clearNote[d.id] || ''}
+                      onChange={(e) =>
+                        setClearNote({ ...clearNote, [d.id]: e.target.value })
+                      }
+                      minLength={5}
+                      required
+                    />
+                    <button
+                      type="button"
+                      className="btn primary"
+                      disabled={busy || (clearNote[d.id] || '').trim().length < 5}
+                      onClick={() =>
+                        run(
+                          () =>
+                            api(`/directions/${d.id}/clear-escalation`, {
+                              method: 'POST',
+                              json: { note: (clearNote[d.id] || '').trim() },
+                            }),
+                          label('dr_toastCleared'),
+                        )
+                      }
+                    >
+                      {label('dr_clearEscalation')}
+                    </button>
+                  </div>
+                )}
+
+                {(isSpeaker ||
+                  (isOwner && (d.status === 'RETURNED' || d.status === 'OVERDUE'))) &&
+                  ['RETURNED', 'ESCALATED', 'OVERDUE', 'IN_PROGRESS'].includes(d.status) && (
+                    <div className="dir-evidence-form">
+                      <input
+                        type="date"
+                        value={extendDue[d.id] || ''}
+                        min={new Date().toISOString().slice(0, 10)}
+                        onChange={(e) =>
+                          setExtendDue({ ...extendDue, [d.id]: e.target.value })
+                        }
+                      />
+                      <button
+                        type="button"
+                        className="btn"
+                        disabled={busy || !extendDue[d.id]}
+                        onClick={() =>
+                          run(
+                            () =>
+                              api(`/directions/${d.id}/extend-due`, {
+                                method: 'POST',
+                                json: { dueDate: extendDue[d.id] },
+                              }),
+                            label('dr_toastDueExtended'),
+                          )
+                        }
+                      >
+                        {label('dr_extendDue')}
+                      </button>
+                    </div>
+                  )}
+
+                {isSpeaker &&
+                  ['RETURNED', 'ESCALATED', 'OVERDUE', 'IN_PROGRESS'].includes(d.status) && (
+                    <div className="dir-evidence-form">
+                      <select
+                        value={reassignTo[d.id] || ''}
+                        onChange={(e) =>
+                          setReassignTo({ ...reassignTo, [d.id]: e.target.value })
+                        }
+                      >
+                        <option value="">{label('fd_selectOfficer')}</option>
+                        {staff.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.displayName}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        className="btn"
+                        disabled={busy || !reassignTo[d.id]}
+                        onClick={() =>
+                          run(
+                            () =>
+                              api(`/directions/${d.id}/reassign`, {
+                                method: 'POST',
+                                json: { ownerId: reassignTo[d.id] },
+                              }),
+                            label('dr_toastReassigned'),
+                          )
+                        }
+                      >
+                        {label('dr_reassign')}
+                      </button>
+                    </div>
                   )}
               </div>
 

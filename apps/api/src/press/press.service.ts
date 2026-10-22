@@ -4,6 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { randomBytes } from 'crypto';
 import { PressStatus, Role } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -71,7 +72,7 @@ export class PressService {
 
   private livePid() {
     const year = new Date().getFullYear().toString().slice(-2);
-    const n = Math.floor(1000 + Math.random() * 9000);
+    const n = (randomBytes(2).readUInt16BE(0) % 9000) + 1000;
     return `PID(I)${n}/${year}`;
   }
 
@@ -138,7 +139,7 @@ export class PressService {
 
   async update(
     id: string,
-    actorId: string,
+    actor: { id: string; role: Role },
     data: {
       title?: string;
       body?: string;
@@ -160,22 +161,39 @@ export class PressService {
       throw new BadRequestException('Dispatched releases cannot be edited');
     }
 
+    const canEdit =
+      actor.id === existing.authorId ||
+      actor.role === Role.SPEAKER ||
+      actor.role === Role.SECRETARY_GENERAL ||
+      actor.role === Role.ADMIN;
+    if (!canEdit) throw new ForbiddenException();
+
     let matterId = existing.matterId;
     if (data.matterId !== undefined) {
       if (!data.matterId) matterId = null;
       else matterId = (await this.assertMatter(data.matterId))?.id || null;
     }
 
-    const contentChanged =
+    const embargoChanged =
+      data.embargoUntil !== undefined &&
+      (data.embargoUntil
+        ? new Date(data.embargoUntil).getTime()
+        : null) !== (existing.embargoUntil?.getTime() ?? null);
+
+    const publishableChanged =
       (data.title !== undefined && data.title.trim() !== existing.title) ||
+      (data.titleUr !== undefined && (data.titleUr.trim() || null) !== existing.titleUr) ||
       (data.body !== undefined && data.body.trim() !== existing.body) ||
-      (data.bodyUr !== undefined && (data.bodyUr.trim() || null) !== existing.bodyUr);
+      (data.bodyUr !== undefined && (data.bodyUr.trim() || null) !== existing.bodyUr) ||
+      (data.wire !== undefined && data.wire.trim() !== (existing.wire || '').trim()) ||
+      (data.socialTargets !== undefined &&
+        (data.socialTargets.trim() || null) !== existing.socialTargets) ||
+      embargoChanged;
 
     const reset =
-      contentChanged &&
+      publishableChanged &&
       (existing.status === PressStatus.APPROVED ||
-        existing.status === PressStatus.SUBMITTED ||
-        existing.status === PressStatus.REJECTED);
+        existing.status === PressStatus.SUBMITTED);
 
     const p = await this.prisma.pressRelease.update({
       where: { id },
@@ -189,8 +207,9 @@ export class PressService {
           data.socialTargets !== undefined
             ? data.socialTargets.trim() || null
             : existing.socialTargets,
-        socialApproved:
-          data.socialApproved !== undefined
+        socialApproved: reset
+          ? false
+          : data.socialApproved !== undefined
             ? Boolean(data.socialApproved)
             : existing.socialApproved,
         matterId,
@@ -208,13 +227,14 @@ export class PressService {
           data.aiAssisted !== undefined ? Boolean(data.aiAssisted) : existing.aiAssisted,
         humanReviewedAt: data.markHumanReviewed ? new Date() : existing.humanReviewedAt,
         approvedAt: reset ? null : existing.approvedAt,
+        rejectReason: reset ? null : existing.rejectReason,
         status: reset ? PressStatus.DRAFT : existing.status,
         pidRef: reset ? this.draftPid(existing.code || 'PR') : existing.pidRef,
       },
       include: include(),
     });
     await this.audit.record({
-      actorId,
+      actorId: actor.id,
       action: 'PRESS_UPDATE',
       entityType: 'PressRelease',
       entityId: id,

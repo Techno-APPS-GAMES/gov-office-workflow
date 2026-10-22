@@ -168,7 +168,7 @@ export class FilesController {
   }
 
   @Post(':id/acknowledge')
-  acknowledge(@Param('id') id: string, @CurrentUser() user: { id: string }) {
+  acknowledge(@Param('id') id: string, @CurrentUser() user: { id: string; role: Role }) {
     return this.files.acknowledge(id, user);
   }
 
@@ -185,9 +185,9 @@ export class FilesController {
   complete(
     @Param('id') id: string,
     @Body('outcome') outcome: string,
-    @CurrentUser() user: { id: string },
+    @CurrentUser() user: { id: string; role: Role },
   ) {
-    return this.files.completeProcedure(id, user, outcome || 'Completed');
+    return this.files.completeProcedure(id, user, outcome || 'PROCEDURE_COMPLETE');
   }
 
   @Post(':id/decide')

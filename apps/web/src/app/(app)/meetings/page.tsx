@@ -328,11 +328,16 @@ export default function MeetingsPage() {
   }
 
   async function complete(id: string) {
+    const minutes = window.prompt(label('mtg_minutes'), '')?.trim() || '';
+    if (minutes.length < 20) {
+      toast.error(label('mtg_completeFailed'));
+      return;
+    }
     setBusy(true);
     try {
       await api(`/meetings/${id}/complete`, {
         method: 'POST',
-        json: { minutes: 'Recorded on desk', outcome: 'Held', decision: 'Noted' },
+        json: { minutes, outcome: 'Held', decision: 'Noted' },
       });
       toast.success(label('mtg_toastComplete'));
       await load();

@@ -46,6 +46,11 @@ function applyDocumentLang(lang: Lang) {
   root.classList.toggle('lang-ur', lang === 'ur');
 }
 
+function persistLangCookie(lang: Lang) {
+  if (typeof document === 'undefined') return;
+  document.cookie = `gow_lang=${lang};path=/;max-age=31536000;SameSite=Lax`;
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<SessionUser | null>(null);
   const [lang, setLangState] = useState<Lang>('en');
@@ -59,6 +64,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       /* ignore */
     }
     applyDocumentLang(next);
+    persistLangCookie(next);
   }, []);
 
   useEffect(() => {
@@ -66,6 +72,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const stored = readStoredLang();
     setLangState(stored);
     applyDocumentLang(stored);
+    persistLangCookie(stored);
     setReady(true);
   }, []);
 
@@ -77,6 +84,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       /* ignore */
     }
     applyDocumentLang(lang);
+    persistLangCookie(lang);
   }, [lang, ready]);
 
   const login = useCallback(async (username: string, password: string, totpCode?: string) => {

@@ -13,6 +13,11 @@ export class SpeechesController {
     return this.speeches.list(status);
   }
 
+  @Get(':id/versions')
+  versions(@Param('id') id: string) {
+    return this.speeches.getVersions(id);
+  }
+
   @Get(':id')
   get(@Param('id') id: string) {
     return this.speeches.get(id);
@@ -51,7 +56,7 @@ export class SpeechesController {
   @Patch(':id')
   update(
     @Param('id') id: string,
-    @CurrentUser() user: { id: string },
+    @CurrentUser() user: { id: string; role: Role },
     @Body()
     body: {
       title?: string;
@@ -68,6 +73,6 @@ export class SpeechesController {
       markHumanReviewed?: boolean;
     },
   ) {
-    return this.speeches.update(id, user.id, body);
+    return this.speeches.update(id, user, body);
   }
 }

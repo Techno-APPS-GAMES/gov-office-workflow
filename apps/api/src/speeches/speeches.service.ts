@@ -8,6 +8,7 @@ import { Role } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { CryptoService } from '../crypto/crypto.service';
 
 const STATUSES = ['DRAFT', 'SUBMITTED', 'APPROVED', 'REJECTED', 'ARCHIVED'] as const;
 type SpeechStatus = (typeof STATUSES)[number];
@@ -38,6 +39,7 @@ export class SpeechesService {
     private prisma: PrismaService,
     private audit: AuditService,
     private notifications: NotificationsService,
+    private crypto: CryptoService,
   ) {}
 
   list(status?: string) {
@@ -59,6 +61,39 @@ export class SpeechesService {
     });
     if (!s) throw new NotFoundException('Speech not found');
     return s;
+  }
+
+  async getVersions(id: string) {
+    const s = await this.get(id);
+    const body = stripVersionMarker(s.body);
+    const ver = versionOf(s.body);
+    const auditTrail = await this.prisma.auditEvent.findMany({
+      where: {
+        entityType: 'Speech',
+        entityId: id,
+        action: { in: ['SPEECH_REVISION', 'SPEECH_APPROVED_SNAPSHOT'] },
+      },
+      orderBy: { createdAt: 'asc' },
+      take: 40,
+      select: { action: true, summary: true, createdAt: true },
+    });
+    return {
+      note:
+        'Body <!--gow-ver:n--> markers record the current revision number only, not prior text. ' +
+        'Use audit SPEECH_REVISION / SPEECH_APPROVED_SNAPSHOT entries for content fingerprints.',
+      currentVersion: ver,
+      versions: [
+        {
+          version: ver,
+          body,
+          bodyUr: s.bodyUr,
+          hash: this.crypto.sha256(body),
+          updatedAt: s.updatedAt,
+          source: 'current_body' as const,
+        },
+      ],
+      auditTrail,
+    };
   }
 
   private async assertMatter(matterId: string | undefined | null) {
@@ -123,7 +158,7 @@ export class SpeechesService {
 
   async update(
     id: string,
-    actorId: string,
+    actor: { id: string; role: Role },
     data: {
       title?: string;
       body?: string;
@@ -145,9 +180,46 @@ export class SpeechesService {
       throw new BadRequestException('Archived speeches cannot be edited');
     }
 
+    const canEdit =
+      actor.id === existing.authorId ||
+      actor.role === Role.SPEAKER ||
+      actor.role === Role.SECRETARY_GENERAL ||
+      actor.role === Role.ADMIN;
+    if (!canEdit) throw new ForbiddenException();
+
     const bodyChanged =
       data.body !== undefined &&
       stripVersionMarker(data.body) !== stripVersionMarker(existing.body);
+    const titleChanged =
+      data.title !== undefined && data.title.trim() !== existing.title;
+    const bodyUrChanged =
+      data.bodyUr !== undefined && (data.bodyUr.trim() || null) !== existing.bodyUr;
+    const talkingPointsChanged =
+      data.talkingPoints !== undefined &&
+      (data.talkingPoints.trim() || null) !== existing.talkingPoints;
+    const publishableChanged =
+      titleChanged || bodyChanged || bodyUrChanged || talkingPointsChanged;
+
+    const resetToDraft =
+      publishableChanged &&
+      (existing.status === 'APPROVED' || existing.status === 'SUBMITTED');
+
+    if (existing.status === 'APPROVED' && !resetToDraft) {
+      const talkingPointsUrChanged =
+        data.talkingPointsUr !== undefined &&
+        (data.talkingPointsUr.trim() || null) !== existing.talkingPointsUr;
+      const aiPrompterWrite =
+        talkingPointsUrChanged ||
+        (data.aiAssisted !== undefined &&
+          Boolean(data.aiAssisted) &&
+          !existing.aiAssisted);
+      if (aiPrompterWrite) {
+        throw new BadRequestException(
+          'Authorized remarks cannot receive prompter or AI edits; change remarks to return to draft',
+        );
+      }
+    }
+
     const nextVersion = bodyChanged ? versionOf(existing.body) + 1 : versionOf(existing.body);
     const nextBody =
       data.body !== undefined ? withVersion(data.body, nextVersion) : existing.body;
@@ -160,12 +232,6 @@ export class SpeechesService {
         matterId = m?.id || null;
       }
     }
-
-    const resetToDraft =
-      bodyChanged &&
-      (existing.status === 'APPROVED' ||
-        existing.status === 'SUBMITTED' ||
-        existing.status === 'REJECTED');
 
     const s = await this.prisma.speech.update({
       where: { id },
@@ -204,19 +270,34 @@ export class SpeechesService {
             : existing.sourcesNote,
         aiAssisted:
           data.aiAssisted !== undefined ? Boolean(data.aiAssisted) : existing.aiAssisted,
-        humanReviewedAt: data.markHumanReviewed ? new Date() : existing.humanReviewedAt,
+        humanReviewedAt:
+          resetToDraft && existing.aiAssisted
+            ? null
+            : data.markHumanReviewed
+              ? new Date()
+              : existing.humanReviewedAt,
         approvedAt: resetToDraft ? null : existing.approvedAt,
         status: resetToDraft ? 'DRAFT' : existing.status,
       },
       include: include(),
     });
     await this.audit.record({
-      actorId,
+      actorId: actor.id,
       action: 'SPEECH_UPDATE',
       entityType: 'Speech',
       entityId: id,
       summary: `Speech updated: ${s.title}${resetToDraft ? ' (returned to draft)' : ''}`,
     });
+    if (bodyChanged) {
+      const plain = stripVersionMarker(nextBody);
+      await this.audit.record({
+        actorId: actor.id,
+        action: 'SPEECH_REVISION',
+        entityType: 'Speech',
+        entityId: id,
+        summary: `Remarks v${nextVersion} sha256=${this.crypto.sha256(plain)}`,
+      });
+    }
     return s;
   }
 
@@ -282,7 +363,12 @@ export class SpeechesService {
       if (from !== 'SUBMITTED' && from !== 'DRAFT') {
         throw new BadRequestException('Approve from submitted (or draft for Speaker direct authorize)');
       }
-      if (existing.aiAssisted && !existing.humanReviewedAt && from === 'SUBMITTED') {
+      if (from === 'DRAFT' && !existing.humanReviewedAt) {
+        throw new BadRequestException(
+          'Mark human review complete before approving from draft (use markHumanReviewed on PATCH)',
+        );
+      }
+      if (existing.aiAssisted && !existing.humanReviewedAt) {
         throw new BadRequestException('Human review required before approval of AI-assisted text');
       }
     } else if (next === 'REJECTED') {
@@ -311,13 +397,20 @@ export class SpeechesService {
       data: {
         status: next,
         approvedAt: next === 'APPROVED' ? new Date() : existing.approvedAt,
-        humanReviewedAt:
-          next === 'APPROVED' && !existing.humanReviewedAt
-            ? new Date()
-            : existing.humanReviewedAt,
       },
       include: include(),
     });
+
+    if (next === 'APPROVED') {
+      const plain = stripVersionMarker(existing.body);
+      await this.audit.record({
+        actorId: actor.id,
+        action: 'SPEECH_APPROVED_SNAPSHOT',
+        entityType: 'Speech',
+        entityId: id,
+        summary: `Approved v${versionOf(existing.body)} sha256=${this.crypto.sha256(plain)}`,
+      });
+    }
 
     if (next === 'SUBMITTED') {
       await this.notifyApprovers(s, existing.author.displayName);

@@ -1,7 +1,16 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { CallStatus, Role } from '@prisma/client';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { CallStatus, Classification, Role } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { assertMatterReadable } from '../auth/access';
+
+const CALL_DIRECTIONS = ['INBOUND', 'OUTBOUND'] as const;
+const CALL_PRIORITIES = ['NORMAL', 'PRIORITY', 'URGENT', 'VIP'] as const;
 
 type CallInput = {
   direction: string;
@@ -21,6 +30,40 @@ type CallInput = {
 @Injectable()
 export class CallsService {
   constructor(private prisma: PrismaService, private audit: AuditService) {}
+
+  private async assertVaultAccess(matterId: string, userId: string, role: Role) {
+    if (role === Role.ADMIN) return;
+    const grant = await this.prisma.vaultGrant.findFirst({
+      where: { matterId, userId, expiresAt: { gt: new Date() } },
+    });
+    if (!grant) throw new ForbiddenException('Confidential matter locked — unlock vault first');
+  }
+
+  private async assertMatterLinkable(matterId: string, user: { id: string; role: Role }) {
+    const matter = await this.prisma.matter.findUnique({ where: { id: matterId } });
+    if (!matter) throw new NotFoundException('Matter not found');
+    assertMatterReadable(matter, user);
+    if (matter.classification === Classification.CONFIDENTIAL) {
+      await this.assertVaultAccess(matter.id, user.id, user.role);
+    }
+    return matter;
+  }
+
+  private normalizeCallFields(data: Pick<CallInput, 'direction' | 'priority' | 'status'>) {
+    const direction = (data.direction || '').trim().toUpperCase();
+    if (!CALL_DIRECTIONS.includes(direction as (typeof CALL_DIRECTIONS)[number])) {
+      throw new BadRequestException(`direction must be one of: ${CALL_DIRECTIONS.join(', ')}`);
+    }
+    const priority = (data.priority || 'NORMAL').trim().toUpperCase();
+    if (!CALL_PRIORITIES.includes(priority as (typeof CALL_PRIORITIES)[number])) {
+      throw new BadRequestException(`priority must be one of: ${CALL_PRIORITIES.join(', ')}`);
+    }
+    const status = data.status ?? CallStatus.LOGGED;
+    if (!Object.values(CallStatus).includes(status)) {
+      throw new BadRequestException('Invalid call status');
+    }
+    return { direction, priority, status };
+  }
 
   private canManage(call: { loggedById: string }, user: { id: string; role: Role }) {
     return (
@@ -70,13 +113,14 @@ export class CallsService {
   }
 
   async create(userId: string, data: CallInput) {
+    const { direction, priority, status } = this.normalizeCallFields(data);
     const call = await this.prisma.callRecord.create({
       data: {
         loggedById: userId,
-        direction: data.direction,
+        direction,
         partyName: data.partyName,
         summary: data.summary,
-        priority: data.priority || 'NORMAL',
+        priority,
         organisation: data.organisation,
         phone: data.phone,
         addressedTo: data.addressedTo,
@@ -84,7 +128,7 @@ export class CallsService {
         followUpNotes: data.followUpNotes,
         matterId: data.matterId || null,
         directionId: data.directionId || null,
-        status: data.status || CallStatus.LOGGED,
+        status,
       },
     });
     await this.audit.record({
@@ -98,9 +142,15 @@ export class CallsService {
   }
 
   async updateStatus(id: string, status: CallStatus, user: { id: string; role: Role }) {
+    if (!Object.values(CallStatus).includes(status)) {
+      throw new BadRequestException('Invalid call status');
+    }
     const call = await this.prisma.callRecord.findUnique({ where: { id } });
     if (!call) throw new NotFoundException();
     if (!this.canManage(call, user)) throw new ForbiddenException('Cannot update this call');
+    if (call.status === CallStatus.CLOSED && status !== CallStatus.CLOSED) {
+      throw new BadRequestException('Closed calls cannot be reopened');
+    }
     const updated = await this.prisma.callRecord.update({ where: { id }, data: { status } });
     await this.audit.record({
       actorId: user.id,
@@ -117,8 +167,7 @@ export class CallsService {
     if (!call) throw new NotFoundException();
     if (!this.canManage(call, user)) throw new ForbiddenException();
     if (matterId) {
-      const matter = await this.prisma.matter.findUnique({ where: { id: matterId } });
-      if (!matter) throw new NotFoundException('Matter not found');
+      await this.assertMatterLinkable(matterId, user);
     }
     const updated = await this.prisma.callRecord.update({
       where: { id },
@@ -145,6 +194,13 @@ export class CallsService {
     const call = await this.prisma.callRecord.findUnique({ where: { id } });
     if (!call) throw new NotFoundException();
     if (!this.canManage(call, user)) throw new ForbiddenException();
+    if (call.meetingId) {
+      const meeting = await this.prisma.meeting.findUnique({ where: { id: call.meetingId } });
+      if (!meeting) {
+        throw new BadRequestException('Call already linked to a missing meeting record');
+      }
+      return { call, meeting };
+    }
     const meeting = await this.prisma.meeting.create({
       data: {
         title: input?.title || `Call follow-up: ${call.partyName}`,
@@ -178,6 +234,13 @@ export class CallsService {
     if (!this.canManage(call, user)) throw new ForbiddenException();
     if (user.role !== Role.SPEAKER && user.role !== Role.ADMIN) {
       throw new ForbiddenException('Only Speaker can issue directions from calls');
+    }
+    if (call.directionId) {
+      const direction = await this.prisma.direction.findUnique({ where: { id: call.directionId } });
+      if (!direction) {
+        throw new BadRequestException('Call already linked to a missing direction record');
+      }
+      return { call, direction };
     }
     const direction = await this.prisma.direction.create({
       data: {

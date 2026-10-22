@@ -1,9 +1,10 @@
 'use client';
 
 import Link from 'next/link';
-import { FormEvent, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { useAuth } from '@/components/AuthProvider';
+import { useToast } from '@/components/Toast';
 import { enumLabel, roleTitle } from '@/lib/i18n';
 
 type SearchResult = {
@@ -31,18 +32,45 @@ type SearchResult = {
 
 export default function SearchPage() {
   const { lang, label } = useAuth();
+  const toast = useToast();
   const [q, setQ] = useState('');
   const [result, setResult] = useState<SearchResult | null>(null);
   const [busy, setBusy] = useState(false);
+  const [searchError, setSearchError] = useState('');
+
+  const runSearch = useCallback(
+    async (query: string) => {
+      const term = query.trim();
+      if (!term) {
+        setResult(null);
+        setSearchError('');
+        return;
+      }
+      setBusy(true);
+      setSearchError('');
+      try {
+        setResult(await api<SearchResult>(`/search?q=${encodeURIComponent(term)}`));
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : label('cm_failed');
+        setSearchError(msg);
+        toast.error(msg);
+      } finally {
+        setBusy(false);
+      }
+    },
+    [label, toast],
+  );
+
+  useEffect(() => {
+    const handle = window.setTimeout(() => {
+      void runSearch(q);
+    }, 300);
+    return () => window.clearTimeout(handle);
+  }, [q, runSearch]);
 
   async function run(e: FormEvent) {
     e.preventDefault();
-    setBusy(true);
-    try {
-      setResult(await api<SearchResult>(`/search?q=${encodeURIComponent(q)}`));
-    } finally {
-      setBusy(false);
-    }
+    await runSearch(q);
   }
 
   return (
@@ -61,6 +89,7 @@ export default function SearchPage() {
             {busy ? label('sr_searching') : label('searchAction')}
           </button>
         </form>
+        {searchError ? <p className="error" style={{ marginTop: 10 }}>{searchError}</p> : null}
         {result?.note ? <p className="muted" style={{ marginTop: 10 }}>{result.note}</p> : null}
       </div>
       {result && (

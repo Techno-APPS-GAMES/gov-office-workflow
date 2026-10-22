@@ -77,18 +77,18 @@ export class UsersController {
   }
 
   @Post()
-  @Roles(Role.ADMIN, Role.DG_IT)
+  @Roles(Role.ADMIN)
   create(@Body() dto: CreateUserDto, @CurrentUser() actor: { id: string }) {
     return this.users.create({ ...dto, actorId: actor.id });
   }
 
   @Patch(':id')
-  @Roles(Role.ADMIN, Role.DG_IT)
+  @Roles(Role.ADMIN)
   update(
     @Param('id') id: string,
     @Body() dto: UpdateUserDto,
-    @CurrentUser() actor: { id: string },
+    @CurrentUser() actor: { id: string; role: Role },
   ) {
-    return this.users.update(id, actor.id, dto);
+    return this.users.update(id, actor.id, dto, actor.role);
   }
 }

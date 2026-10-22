@@ -142,6 +142,7 @@ export default function RemotePage() {
   const [verifyingId, setVerifyingId] = useState<string | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [wetInkNote, setWetInkNote] = useState('');
+  const [wetInkScan, setWetInkScan] = useState<File | null>(null);
   const [declineId, setDeclineId] = useState<string | null>(null);
   const [declineReason, setDeclineReason] = useState('');
   const [revokeId, setRevokeId] = useState<string | null>(null);
@@ -213,6 +214,7 @@ export default function RemotePage() {
       const p = await api<Preview>(`/esign/${id}/preview`);
       setPreview(p);
       setWetInkNote('');
+      setWetInkScan(null);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : label('rm_previewFailed'));
     } finally {
@@ -224,13 +226,28 @@ export default function RemotePage() {
     if (!preview) return;
     setBusy(true);
     try {
-      await api(`/esign/${preview.id}/sign`, {
-        method: 'POST',
-        json: {
-          confirmHash: preview.documentHash,
-          wetInkNote: preview.method === 'WET_INK' ? wetInkNote : undefined,
-        },
-      });
+      if (preview.method === 'WET_INK' && wetInkScan) {
+        const fd = new FormData();
+        fd.append('confirmHash', preview.documentHash);
+        if (wetInkNote.trim()) fd.append('wetInkNote', wetInkNote.trim());
+        fd.append('scan', wetInkScan);
+        const t = localStorage.getItem('gow_access');
+        const res = await fetch(`/api/esign/${preview.id}/sign`, {
+          method: 'POST',
+          headers: t ? { Authorization: `Bearer ${t}` } : {},
+          body: fd,
+          credentials: 'include',
+        });
+        if (!res.ok) throw new Error((await res.text()) || label('rm_signFailed'));
+      } else {
+        await api(`/esign/${preview.id}/sign`, {
+          method: 'POST',
+          json: {
+            confirmHash: preview.documentHash,
+            wetInkNote: preview.method === 'WET_INK' ? wetInkNote : undefined,
+          },
+        });
+      }
       toast.success(
         preview.method === 'WET_INK' ? label('rm_toastWetInk') : label('rm_toastSealed'),
       );
@@ -406,17 +423,27 @@ export default function RemotePage() {
             {label('rm_docHash')} <code>{preview.documentHash}</code>
           </p>
           {preview.method === 'WET_INK' ? (
-            <label className="field">
-              {label('rm_wetNote')}
-              <textarea
-                rows={3}
-                value={wetInkNote}
-                onChange={(e) => setWetInkNote(e.target.value)}
-                placeholder={label('rm_wetNotePlaceholder')}
-                required
-                minLength={8}
-              />
-            </label>
+            <>
+              <label className="field">
+                {label('rm_wetScanUpload')}
+                <input
+                  type="file"
+                  accept="image/*,application/pdf"
+                  onChange={(e) => setWetInkScan(e.target.files?.[0] || null)}
+                />
+              </label>
+              <label className="field">
+                {label('rm_wetNote')}
+                <textarea
+                  rows={3}
+                  value={wetInkNote}
+                  onChange={(e) => setWetInkNote(e.target.value)}
+                  placeholder={label('rm_wetNotePlaceholder')}
+                  required={!wetInkScan}
+                  minLength={wetInkScan ? 0 : 40}
+                />
+              </label>
+            </>
           ) : null}
           <div className="actions" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button type="button" className="btn primary" disabled={busy} onClick={confirmSign}>

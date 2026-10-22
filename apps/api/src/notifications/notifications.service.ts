@@ -81,13 +81,23 @@ export class NotificationsService {
         where: { archived: false, status: MeetingStatus.APPROVED },
       }),
       this.prisma.speech.findMany({
-        where: { status: { in: ['SUBMITTED', 'PENDING_APPROVAL', 'FOR_REVIEW'] } },
+        where: {
+          status: { in: ['SUBMITTED', 'PENDING_APPROVAL', 'FOR_REVIEW'] },
+          ...(canDecideMeetings || user.role === Role.ADMIN || user.role === Role.SPEAKER
+            ? {}
+            : { authorId: user.id }),
+        },
         orderBy: { updatedAt: 'desc' },
         take: 6,
         include: { author: { select: { displayName: true } } },
       }),
       this.prisma.direction.findMany({
-        where: { status: DirectionStatus.EVIDENCE_SUBMITTED },
+        where: {
+          status: DirectionStatus.EVIDENCE_SUBMITTED,
+          ...(user.role === Role.SPEAKER || user.role === Role.ADMIN
+            ? {}
+            : { OR: [{ ownerId: user.id }, { createdById: user.id }] }),
+        },
         orderBy: { updatedAt: 'desc' },
         take: 6,
         include: {
@@ -96,7 +106,12 @@ export class NotificationsService {
         },
       }),
       this.prisma.workItem.findMany({
-        where: { status: WorkItemStatus.SUBMITTED },
+        where: {
+          status: WorkItemStatus.SUBMITTED,
+          ...(canDecideMeetings || user.role === Role.ADMIN || user.role === Role.SPEAKER
+            ? {}
+            : { ownerId: user.id }),
+        },
         orderBy: { updatedAt: 'desc' },
         take: 4,
         include: { owner: { select: { displayName: true } } },
@@ -195,7 +210,8 @@ export class NotificationsService {
 }
 
 function hrefForNotice(type: string, recordId?: string | null) {
-  switch (type) {
+  const t = (type || '').toUpperCase();
+  switch (t) {
     case 'MESSAGE':
       return '/messages';
     case 'MEETING':
@@ -204,8 +220,13 @@ function hrefForNotice(type: string, recordId?: string | null) {
       return '/directions';
     case 'ESIGN':
       return '/remote';
+    case 'SPEECH':
+      return '/speeches';
+    case 'WORK':
+      return recordId ? `/extensions?focus=${recordId}` : '/extensions';
     case 'MATTER':
     case 'ROUTE':
+    case 'ROUTING':
       return recordId ? `/files/${recordId}` : '/files';
     default:
       return '/inbox';

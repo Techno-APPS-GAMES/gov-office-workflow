@@ -1,4 +1,15 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Query,
+  UploadedFile,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 import { IsIn, IsOptional, IsString, IsUUID, MinLength } from 'class-validator';
 import { Role } from '@prisma/client';
 import { EsignService } from './esign.service';
@@ -71,14 +82,22 @@ export class EsignController {
   }
 
   @Post(':id/sign')
+  @UseInterceptors(
+    FileInterceptor('scan', {
+      storage: memoryStorage(),
+      limits: { fileSize: 25 * 1024 * 1024 },
+    }),
+  )
   sign(
     @Param('id') id: string,
     @Body() body: SignDto,
+    @UploadedFile() scan: Express.Multer.File | undefined,
     @CurrentUser() user: { id: string },
   ) {
     return this.esign.sign(id, user.id, {
       confirmHash: body.confirmHash,
       wetInkNote: body.wetInkNote,
+      scanFile: scan,
     });
   }
 

@@ -554,6 +554,18 @@ label {
   padding: 22px;
   overflow: hidden;
 }
+/* i18n RTL — logical properties for panels (progressive enhancement) */
+@supports (padding-inline: 1px) {
+  .panel {
+    padding-inline: 22px;
+    margin-inline: 0;
+    text-align: start;
+  }
+  .panel-head {
+    padding-inline: 0;
+    text-align: start;
+  }
+}
 .panel h2 { margin-bottom: 12px; }
 .panel-head {
   display: flex;

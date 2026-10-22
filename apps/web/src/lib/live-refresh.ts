@@ -7,7 +7,7 @@ import { subscribeDataChanged } from '@/lib/workspace-events';
 export { notifyDataChanged } from '@/lib/workspace-events';
 
 type Options = {
-  /** How often to check the server stamp while the tab is visible (ms). Default 3000. */
+  /** How often to check the server stamp while the tab is visible (ms). Default 8000. */
   intervalMs?: number;
   /** Set false to pause. Default true. */
   enabled?: boolean;
@@ -24,7 +24,7 @@ export function useLiveRefresh(
   deps: unknown[] = [],
   options: Options = {},
 ) {
-  const { intervalMs = 3000, enabled = true } = options;
+  const { intervalMs = 8000, enabled = true } = options;
   const reloadRef = useRef(reload);
   reloadRef.current = reload;
   const stampRef = useRef<string | null>(null);

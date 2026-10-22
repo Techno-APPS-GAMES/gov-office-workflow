@@ -32,8 +32,9 @@ type Ledger = {
   ttlMinutes: number;
   cipher: string;
   kdf: string;
-  iterations: number;
-  saltBytes: number;
+  unlockGate?: string;
+  iterations: number | null;
+  saltBytes: number | null;
 };
 
 export default function VaultPage() {

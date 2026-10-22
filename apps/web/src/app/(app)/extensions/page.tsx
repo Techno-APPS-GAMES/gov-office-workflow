@@ -175,14 +175,33 @@ export default function ExtensionsPage() {
     user?.role === 'ADMIN';
 
   const load = useCallback(async () => {
-    const [work, speeches, press, greetings, calls, mats] = await Promise.all([
-      api<WorkItem[]>('/work-items').catch(() => [] as WorkItem[]),
-      api<any[]>('/speeches').catch(() => []),
-      api<any[]>('/press').catch(() => []),
-      api<any[]>('/greetings').catch(() => []),
-      api<any[]>('/calls').catch(() => []),
-      api<MatterOpt[]>('/files').catch(() => [] as MatterOpt[]),
-    ]);
+    const moduleLoads = [
+      { key: 'work-items', path: '/work-items', labelKey: 'extensions' as const },
+      { key: 'speeches', path: '/speeches', labelKey: 'ext_src_speech' as const },
+      { key: 'press', path: '/press', labelKey: 'ext_src_press' as const },
+      { key: 'greetings', path: '/greetings', labelKey: 'ext_src_greeting' as const },
+      { key: 'calls', path: '/calls', labelKey: 'ext_src_call' as const },
+      { key: 'files', path: '/files', labelKey: 'ext_linkedMatterOpt' as const },
+    ];
+    const settled = await Promise.allSettled(
+      moduleLoads.map((m) => api(m.path)),
+    );
+    settled.forEach((result, i) => {
+      if (result.status === 'rejected') {
+        const name = label(moduleLoads[i].labelKey);
+        const msg =
+          result.reason instanceof Error ? result.reason.message : label('mtg_actionFailed');
+        toast.error(`${name}: ${msg}`);
+      }
+    });
+    const pick = <T,>(i: number, fallback: T): T =>
+      settled[i].status === 'fulfilled' ? (settled[i].value as T) : fallback;
+    const work = pick(0, [] as WorkItem[]);
+    const speeches = pick(1, [] as any[]);
+    const press = pick(2, [] as any[]);
+    const greetings = pick(3, [] as any[]);
+    const calls = pick(4, [] as any[]);
+    const mats = pick(5, [] as MatterOpt[]);
 
     setMatters(mats.filter((m) => m.status !== 'CLOSED'));
 
@@ -281,7 +300,7 @@ export default function ExtensionsPage() {
 
     next.sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt));
     setRows(next);
-  }, [label]);
+  }, [label, toast]);
 
   useLiveRefresh(load, []);
 

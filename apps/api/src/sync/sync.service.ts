@@ -10,8 +10,22 @@ export class SyncService {
   constructor(private prisma: PrismaService) {}
 
   async stamp() {
+    const stampEntityTypes = [
+      'Matter',
+      'Direction',
+      'Meeting',
+      'Speech',
+      'PressRelease',
+      'CallRecord',
+      'ScheduleItem',
+    ];
+    const noisy = ['LOGIN', 'LOGOUT', 'AI_ASK', 'SYNC', 'LDAP_SYNC'];
     const [audit, matter] = await Promise.all([
       this.prisma.auditEvent.findFirst({
+        where: {
+          entityType: { in: stampEntityTypes },
+          action: { notIn: noisy },
+        },
         orderBy: { seq: 'desc' },
         select: { seq: true, createdAt: true },
       }),

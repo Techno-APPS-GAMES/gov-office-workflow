@@ -75,6 +75,7 @@ export default function MovementPage() {
   const { user, lang, label } = useAuth();
   const toast = useToast();
   const [matters, setMatters] = useState<MatterList[]>([]);
+  const [listError, setListError] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<MatterDetail | null>(null);
   const [detailError, setDetailError] = useState('');
@@ -86,18 +87,38 @@ export default function MovementPage() {
   const [confBannerOpen, setConfBannerOpen] = useState(true);
   const [returnRemarks, setReturnRemarks] = useState('');
   const [showReturn, setShowReturn] = useState(false);
+  const [people, setPeople] = useState<{ id: string; displayName: string }[]>([]);
+  const [routeTo, setRouteTo] = useState('');
+  const [procedure, setProcedure] = useState('Forward for action');
+  const [routeDue, setRouteDue] = useState('');
+  const [showForward, setShowForward] = useState(false);
   const labelRef = useRef(label);
   labelRef.current = label;
+  const toastRef = useRef(toast);
+  toastRef.current = toast;
 
   const loadList = useCallback(async () => {
-    const all = await api<MatterList[]>('/files');
-    setMatters(all);
-    setSelectedId((prev) => prev || all[0]?.id || null);
+    try {
+      const all = await api<MatterList[]>('/files');
+      setMatters(all);
+      setListError('');
+      setSelectedId((prev) => prev || all[0]?.id || null);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : labelRef.current('loadFailed');
+      setListError(msg);
+      toastRef.current.error(msg);
+    }
   }, []);
 
   useEffect(() => {
-    loadList().catch(() => setMatters([]));
+    void loadList();
   }, [loadList]);
+
+  useEffect(() => {
+    api<{ id: string; displayName: string }[]>('/users')
+      .then(setPeople)
+      .catch(() => undefined);
+  }, []);
 
   const loadDetail = useCallback(
     async (id: string, soft = false) => {
@@ -195,9 +216,34 @@ export default function MovementPage() {
     try {
       await api(`/files/${selectedId}/complete-procedure`, {
         method: 'POST',
-        json: { outcome: 'Procedure complete' },
+        json: { outcome: 'PROCEDURE_COMPLETE' },
       });
       toast.success(label('mv_toastProcDone'));
+      await loadList();
+      await loadDetail(selectedId);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : label('cm_failed'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function forwardFile(e: FormEvent) {
+    e.preventDefault();
+    if (!selectedId) return;
+    setBusy(true);
+    try {
+      await api(`/files/${selectedId}/route`, {
+        method: 'POST',
+        json: {
+          toUserId: routeTo,
+          procedure,
+          ...(routeDue ? { dueDate: routeDue } : {}),
+        },
+      });
+      toast.success(label('fd_toastRouted'));
+      setShowForward(false);
+      setRouteTo('');
       await loadList();
       await loadDetail(selectedId);
     } catch (err) {
@@ -336,7 +382,11 @@ export default function MovementPage() {
                 <div className="muted">{m.holder?.displayName || label('unassigned')}</div>
               </button>
             ))}
-            {!matters.length && <p className="muted">{label('mv_listEmpty')}</p>}
+            {listError && !matters.length ? (
+              <div className="panel error">{listError}</div>
+            ) : (
+              !matters.length && <p className="muted">{label('mv_listEmpty')}</p>
+            )}
           </div>
         </aside>
 
@@ -451,7 +501,53 @@ export default function MovementPage() {
                       >
                         {label('files_returnFile')}
                       </button>
+                      <button
+                        type="button"
+                        className="btn movement-action-btn"
+                        onClick={() => setShowForward((v) => !v)}
+                        disabled={busy}
+                      >
+                        {label('fd_routeBtn')}
+                      </button>
                     </div>
+                    {showForward && (
+                      <form
+                        className="grid-form"
+                        style={{ marginTop: 12, width: '100%' }}
+                        onSubmit={forwardFile}
+                      >
+                        <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+                          <select
+                            value={routeTo}
+                            onChange={(e) => setRouteTo(e.target.value)}
+                            required
+                          >
+                            <option value="">{label('fd_selectOfficer')}</option>
+                            {people.map((p) => (
+                              <option key={p.id} value={p.id}>
+                                {p.displayName}
+                              </option>
+                            ))}
+                          </select>
+                          <input
+                            value={procedure}
+                            onChange={(e) => setProcedure(e.target.value)}
+                            required
+                            placeholder={label('fd_procedure')}
+                          />
+                          <input
+                            type="date"
+                            value={routeDue}
+                            min={new Date().toISOString().slice(0, 10)}
+                            onChange={(e) => setRouteDue(e.target.value)}
+                            title={label('fd_dueOptional')}
+                          />
+                          <button className="btn primary" type="submit" disabled={busy}>
+                            {label('fd_routeBtn')}
+                          </button>
+                        </div>
+                      </form>
+                    )}
                     {showReturn && (
                       <form className="grid-form" style={{ marginTop: 12, width: '100%' }} onSubmit={returnWithRemarks}>
                         <div className="field">
@@ -579,7 +675,7 @@ export default function MovementPage() {
                           <li key={ev.id}>
                             <strong>{enumLabel(lang, ev.kind)}</strong>
                             <div className="muted">{fmtDate(ev.createdAt, label('pending'))}</div>
-                            <div>{ev.summary}</div>
+                            <div>{enumLabel(lang, ev.summary)}</div>
                           </li>
                         ))}
                         {!detail.journeyEvents?.length && (

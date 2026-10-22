@@ -80,7 +80,7 @@ export class PressController {
   @Patch(':id')
   update(
     @Param('id') id: string,
-    @CurrentUser() user: { id: string },
+    @CurrentUser() user: { id: string; role: Role },
     @Body()
     body: {
       title?: string;
@@ -97,6 +97,6 @@ export class PressController {
       markHumanReviewed?: boolean;
     },
   ) {
-    return this.press.update(id, user.id, body);
+    return this.press.update(id, user, body);
   }
 }

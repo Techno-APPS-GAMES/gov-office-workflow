@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { Client } from 'ldapts';
+import { Prisma } from '@prisma/client';
 import { Role } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CryptoService } from '../crypto/crypto.service';
@@ -64,49 +65,80 @@ export class LdapService {
     const client = new Client({ url });
     let imported = 0;
     let updated = 0;
+    let skipped = 0;
+    const errors: string[] = [];
+    const pageSize = Number(process.env.LDAP_PAGE_SIZE || 200);
     try {
       await client.bind(bindDn, bindPassword);
-      const { searchEntries } = await client.search(searchBase, {
-        scope: 'sub',
+      const searchOpts = {
+        scope: 'sub' as const,
         filter: '(objectClass=person)',
         attributes: ['dn', 'cn', 'mail', 'sAMAccountName', 'uid'],
-      });
+        paged: { pageSize },
+      };
 
-      for (const entry of searchEntries) {
-        const username =
-          String(entry.sAMAccountName || entry.uid || '').trim() ||
-          String(entry.dn).split(',')[0]?.replace(/^cn=/i, '') ||
-          '';
-        const email = String(entry.mail || `${username}@ldap.local`);
-        const displayName = String(entry.cn || username);
-        if (!username) continue;
+      for await (const page of client.searchPaginated(searchBase, searchOpts)) {
+        for (const entry of page.searchEntries) {
+          const username =
+            String(entry.sAMAccountName || entry.uid || '').trim() ||
+            String(entry.dn).split(',')[0]?.replace(/^cn=/i, '') ||
+            '';
+          const email = String(entry.mail || `${username}@ldap.local`);
+          const displayName = String(entry.cn || username);
+          if (!username) continue;
 
-        const existing = await this.prisma.user.findFirst({
-          where: { OR: [{ username }, { ldapDn: String(entry.dn) }] },
-        });
-        if (existing) {
-          await this.prisma.user.update({
-            where: { id: existing.id },
-            data: { displayName, email, ldapDn: String(entry.dn) },
-          });
-          updated++;
-        } else {
-          const tempPass = await this.crypto.hashPassword(
-            `LdapTemp!${Math.random().toString(36).slice(2)}9A`,
-          );
-          await this.prisma.user.create({
-            data: {
-              username,
-              displayName,
-              email,
-              passwordHash: tempPass,
-              role: Role.SPECIAL_SECRETARY,
-              ldapDn: String(entry.dn),
-              mfaEnabled: false,
-              active: true,
-            },
-          });
-          imported++;
+          try {
+            const existing = await this.prisma.user.findFirst({
+              where: { OR: [{ username }, { ldapDn: String(entry.dn) }] },
+            });
+            if (existing) {
+              const emailOwner = await this.prisma.user.findFirst({
+                where: { email, NOT: { id: existing.id } },
+              });
+              if (emailOwner) {
+                skipped++;
+                errors.push(`Skipped ${username}: email ${email} already used by another user`);
+                continue;
+              }
+              await this.prisma.user.update({
+                where: { id: existing.id },
+                data: { displayName, email, ldapDn: String(entry.dn) },
+              });
+              updated++;
+            } else {
+              const emailTaken = await this.prisma.user.findFirst({ where: { email } });
+              if (emailTaken) {
+                skipped++;
+                errors.push(`Skipped new user ${username}: email ${email} already in directory`);
+                continue;
+              }
+              const tempPass = await this.crypto.hashPassword(
+                `LdapPending!${Math.random().toString(36).slice(2)}9A`,
+              );
+              await this.prisma.user.create({
+                data: {
+                  username,
+                  displayName,
+                  email,
+                  passwordHash: tempPass,
+                  role: Role.SPECIAL_SECRETARY,
+                  ldapDn: String(entry.dn),
+                  mfaEnabled: false,
+                  active: false,
+                },
+              });
+              imported++;
+            }
+          } catch (err) {
+            if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+              skipped++;
+              errors.push(`Skipped ${username}: unique constraint (${email})`);
+              continue;
+            }
+            errors.push(
+              `Failed ${username || String(entry.dn)}: ${err instanceof Error ? err.message : String(err)}`,
+            );
+          }
         }
       }
     } finally {
@@ -122,9 +154,18 @@ export class LdapService {
       action: 'LDAP_SYNC',
       entityType: 'System',
       entityId: null,
-      summary: `LDAP sync complete; ${imported} new, ${updated} updated`,
+      summary: `LDAP sync complete; ${imported} new (inactive until password set), ${updated} updated`,
     });
     this.log.log(`LDAP sync imported ${imported}, updated ${updated}`);
-    return { ok: true, stub: false, imported, updated, message: 'Directory sync complete' };
+    return {
+      ok: true,
+      stub: false,
+      imported,
+      updated,
+      skipped,
+      errors,
+      message:
+        'Directory sync complete. New LDAP users are inactive until an ADMIN sets a local password (or LDAP bind login is enabled).',
+    };
   }
 }

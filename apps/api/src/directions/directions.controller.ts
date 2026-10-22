@@ -27,8 +27,11 @@ export class DirectionsController {
   }
 
   @Get(':id/activity')
-  activity(@Param('id') id: string) {
-    return this.directions.activity(id);
+  activity(
+    @Param('id') id: string,
+    @CurrentUser() user: { id: string; role: Role },
+  ) {
+    return this.directions.activity(id, user);
   }
 
   @Get(':id/evidence-file/download')
@@ -72,7 +75,7 @@ export class DirectionsController {
     @Body('approve') approve: boolean,
     @CurrentUser() user: { id: string },
   ) {
-    return this.directions.verify(id, user.id, approve !== false);
+    return this.directions.verify(id, user.id, approve);
   }
 
   @Post(':id/escalate')
@@ -82,5 +85,34 @@ export class DirectionsController {
     @CurrentUser() user: { id: string; role: Role },
   ) {
     return this.directions.escalate(id, user, note);
+  }
+
+  @Post(':id/extend-due')
+  extendDue(
+    @Param('id') id: string,
+    @Body('dueDate') dueDate: string,
+    @CurrentUser() user: { id: string; role: Role },
+  ) {
+    return this.directions.extendDue(id, user, dueDate);
+  }
+
+  @Post(':id/reassign')
+  @Roles(Role.SPEAKER, Role.ADMIN)
+  reassign(
+    @Param('id') id: string,
+    @Body('ownerId') ownerId: string,
+    @CurrentUser() user: { id: string; role: Role },
+  ) {
+    return this.directions.reassign(id, user, ownerId);
+  }
+
+  @Post(':id/clear-escalation')
+  @Roles(Role.SPEAKER, Role.ADMIN)
+  clearEscalation(
+    @Param('id') id: string,
+    @Body('note') note: string,
+    @CurrentUser() user: { id: string; role: Role },
+  ) {
+    return this.directions.clearEscalated(id, user, note);
   }
 }

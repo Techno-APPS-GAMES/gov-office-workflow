@@ -38,8 +38,11 @@ export class DakController {
 
   @Get()
   @Roles(Role.SPEAKER, Role.SECRETARY_GENERAL, Role.SPECIAL_SECRETARY, Role.ADMIN)
-  list(@Query('direction') direction?: string) {
-    return this.dak.list(direction);
+  list(
+    @CurrentUser() user: { id: string; role: Role },
+    @Query('direction') direction?: string,
+  ) {
+    return this.dak.list(user, direction);
   }
 
   @Post('in')

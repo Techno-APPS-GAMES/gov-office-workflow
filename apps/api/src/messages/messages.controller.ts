@@ -12,6 +12,7 @@ import {
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import type { Response } from 'express';
+import { Role } from '@prisma/client';
 import { MessagesService } from './messages.service';
 import { CurrentUser } from '../auth/current-user.decorator';
 
@@ -57,7 +58,7 @@ export class MessagesController {
     }),
   )
   send(
-    @CurrentUser() user: { id: string },
+    @CurrentUser() user: { id: string; role: Role },
     @Body()
     body: {
       toUserId: string;
@@ -67,7 +68,7 @@ export class MessagesController {
     },
     @UploadedFiles() files?: Express.Multer.File[],
   ) {
-    return this.messages.send(user.id, body, files || []);
+    return this.messages.send(user, body, files || []);
   }
 
   @Post(':id/read')

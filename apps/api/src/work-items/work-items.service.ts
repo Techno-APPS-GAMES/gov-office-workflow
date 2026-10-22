@@ -7,6 +7,7 @@ import {
 import { Classification, Role, WorkItemStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { workItemVisibilityWhere } from '../auth/access';
 import { NotificationsService } from '../notifications/notifications.service';
 
 const KINDS = [
@@ -37,19 +38,35 @@ export class WorkItemsService {
     private notifications: NotificationsService,
   ) {}
 
-  private canSee(user: { id: string; role: Role }, item: { ownerId: string; createdById: string }) {
+  private canSee(
+    user: { id: string; role: Role },
+    item: { ownerId: string; createdById: string; classification: Classification },
+  ) {
+    if (item.classification === Classification.CONFIDENTIAL) {
+      return (
+        user.role === Role.SPEAKER ||
+        user.role === Role.ADMIN ||
+        item.ownerId === user.id
+      );
+    }
     if (user.role === Role.SPEAKER || user.role === Role.ADMIN || user.role === Role.SECRETARY_GENERAL) {
       return true;
     }
     return item.ownerId === user.id || item.createdById === user.id;
   }
 
-  private async nextCode() {
+  private canEditConfidential(user: { id: string; role: Role }, ownerId: string) {
+    return user.role === Role.ADMIN || ownerId === user.id;
+  }
+
+  private async nextCode(tx: Pick<PrismaService, 'workItem' | '$executeRawUnsafe'>) {
     const year = new Date().getFullYear();
-    const count = await this.prisma.workItem.count({
-      where: { code: { startsWith: `WR-${year}-` } },
+    const prefix = `WR-${year}-`;
+    await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(87201402)`);
+    const count = await tx.workItem.count({
+      where: { code: { startsWith: prefix } },
     });
-    return `WR-${year}-${String(count + 1).padStart(3, '0')}`;
+    return `${prefix}${String(count + 1).padStart(3, '0')}`;
   }
 
   private async assertMatter(matterId?: string | null) {
@@ -63,10 +80,7 @@ export class WorkItemsService {
     user: { id: string; role: Role },
     opts?: { status?: string; kind?: string },
   ) {
-    const where: Record<string, unknown> = {};
-    if (!(user.role === Role.SPEAKER || user.role === Role.ADMIN || user.role === Role.SECRETARY_GENERAL)) {
-      where.OR = [{ ownerId: user.id }, { createdById: user.id }];
-    }
+    const where: Record<string, unknown> = { ...workItemVisibilityWhere(user) };
     if (opts?.status) {
       const s = opts.status.toUpperCase();
       if (Object.values(WorkItemStatus).includes(s as WorkItemStatus)) {
@@ -128,21 +142,24 @@ export class WorkItemsService {
       if (Number.isNaN(dueAt.getTime())) throw new BadRequestException('Invalid dueAt');
     }
 
-    const item = await this.prisma.workItem.create({
-      data: {
-        code: await this.nextCode(),
-        title,
-        kind,
-        text,
-        language: data.language === 'ur' ? 'ur' : 'en',
-        classification: data.classification || Classification.INTERNAL,
-        priority,
-        ownerId: data.ownerId || userId,
-        createdById: userId,
-        matterId: data.matterId || null,
-        dueAt,
-      },
-      include: include(),
+    const item = await this.prisma.$transaction(async (tx) => {
+      const code = await this.nextCode(tx);
+      return tx.workItem.create({
+        data: {
+          code,
+          title,
+          kind,
+          text,
+          language: data.language === 'ur' ? 'ur' : 'en',
+          classification: data.classification || Classification.INTERNAL,
+          priority,
+          ownerId: data.ownerId || userId,
+          createdById: userId,
+          matterId: data.matterId || null,
+          dueAt,
+        },
+        include: include(),
+      });
     });
 
     await this.audit.record({
@@ -173,6 +190,13 @@ export class WorkItemsService {
     const existing = await this.prisma.workItem.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException('Work record not found');
     if (!this.canSee(user, existing)) throw new ForbiddenException();
+    const classification = data.classification ?? existing.classification;
+    if (
+      classification === Classification.CONFIDENTIAL &&
+      !this.canEditConfidential(user, existing.ownerId)
+    ) {
+      throw new ForbiddenException('Confidential work records can only be edited by the owner or an admin');
+    }
     if (existing.status !== WorkItemStatus.DRAFT && existing.status !== WorkItemStatus.REJECTED) {
       throw new BadRequestException('Only draft or rejected records can be edited');
     }

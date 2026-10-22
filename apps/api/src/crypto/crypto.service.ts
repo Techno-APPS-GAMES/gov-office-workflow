@@ -4,10 +4,19 @@ import * as bcrypt from 'bcryptjs';
 
 @Injectable()
 export class CryptoService {
+  private hardened() {
+    return process.env.PILOT_MODE === 'true' || process.env.NODE_ENV === 'production';
+  }
+
   private masterKey(): Buffer {
     const hex = process.env.FILE_ENCRYPTION_MASTER_KEY || '';
     if (hex.length < 64) {
-      // Dev fallback — production must set env
+      if (this.hardened()) {
+        throw new Error(
+          'FILE_ENCRYPTION_MASTER_KEY must be a 64-char hex string when PILOT_MODE or production',
+        );
+      }
+      // Local-dev fallback only
       return scryptSync('dev-only-master-key-change-me', 'gow-salt', 32);
     }
     return Buffer.from(hex.slice(0, 64), 'hex');

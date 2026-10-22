@@ -55,6 +55,19 @@ export class OcrService {
       }
     }
 
+    const allowConfidentialOcr =
+      String(process.env.OCR_ALLOW_CONFIDENTIAL || 'false').toLowerCase() === 'true';
+    if (att.matter.classification === Classification.CONFIDENTIAL && !allowConfidentialOcr) {
+      return {
+        ok: false,
+        reason:
+          'OCR disabled for CONFIDENTIAL matters (set OCR_ALLOW_CONFIDENTIAL=true to enable; external vision stays off)',
+        chars: 0,
+        preview: '',
+      };
+    }
+    const blockExternalVision = att.matter.classification === Classification.CONFIDENTIAL;
+
     let buffer = await this.storage.getObject(att.storageKey);
     if (att.encrypted && att.wrappedDek) {
       buffer = this.crypto.decryptFile(buffer, att.wrappedDek);
@@ -66,7 +79,7 @@ export class OcrService {
 
     let text = '';
     let method = 'none';
-    const preferVision = this.preferVision();
+    const preferVision = !blockExternalVision && this.preferVision();
 
     if (isPdf) {
       // Prefer fast text-layer reflow first (stable); vision improves after if still weak
@@ -80,7 +93,7 @@ export class OcrService {
         method = 'pdf-text-reflow';
       }
 
-      if (preferVision && this.visionEnabled() && (isWeakOcr(text) || isBrokenLayout(text))) {
+      if (preferVision && (isWeakOcr(text) || isBrokenLayout(text))) {
         this.log.log(`OCR vision improve for ${att.fileName}`);
         try {
           const vision = await this.visionOcrPdfPages(buffer);
@@ -102,7 +115,7 @@ export class OcrService {
       }
 
       // Always try AI reflow if still broken and we have a key
-      if ((isBrokenLayout(text) || isWeakOcr(text)) && this.visionEnabled()) {
+      if ((isBrokenLayout(text) || isWeakOcr(text)) && preferVision) {
         if (!method.includes('vision-layout')) {
           const visionPages = await this.visionOcrPdfPages(buffer);
           if (visionPages.trim()) {
@@ -119,7 +132,7 @@ export class OcrService {
         }
       }
     } else if (isImage) {
-      if (preferVision && this.visionEnabled()) {
+      if (preferVision) {
         text = formatAsOfficeDocument(
           await this.visionOcrImage(buffer, att.contentType || 'image/png'),
         );
@@ -132,7 +145,7 @@ export class OcrService {
           method = 'image-ocr-layout';
         }
       }
-      if (isWeakOcr(text) && this.visionEnabled()) {
+      if (isWeakOcr(text) && preferVision) {
         const vision = formatAsOfficeDocument(
           await this.visionOcrImage(buffer, att.contentType || 'image/png'),
         );
@@ -151,7 +164,7 @@ export class OcrService {
 
     // Final hard reflow — never persist one-word-per-line columns
     text = formatAsOfficeDocument(text);
-    if (isBrokenLayout(text) && this.visionEnabled()) {
+    if (isBrokenLayout(text) && preferVision) {
       const cleaned = await this.visionCleanupText(text);
       if (cleaned.trim()) {
         text = formatAsOfficeDocument(cleaned);

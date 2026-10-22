@@ -18,13 +18,32 @@ export class MeetingsService {
     private schedule: ScheduleService,
   ) {}
 
-  list(user: { id: string; role: Role }) {
+  private canSeeFullCnic(role: Role) {
+    return role === Role.SPEAKER || role === Role.ADMIN;
+  }
+
+  private maskCnic(cnic: string | null | undefined) {
+    if (!cnic) return cnic ?? null;
+    const digits = cnic.replace(/\D/g, '');
+    if (digits.length < 4) return '****';
+    return `*****${digits.slice(-4)}`;
+  }
+
+  private sanitizeMeeting<T extends { screeningCnic?: string | null }>(
+    meeting: T,
+    user: { role: Role },
+  ): T {
+    if (this.canSeeFullCnic(user.role)) return meeting;
+    return { ...meeting, screeningCnic: this.maskCnic(meeting.screeningCnic) };
+  }
+
+  async list(user: { id: string; role: Role }) {
     const canSeeAll =
       user.role === Role.SPEAKER ||
       user.role === Role.ADMIN ||
       user.role === Role.SECRETARY_GENERAL ||
       user.role === Role.SPECIAL_SECRETARY;
-    return this.prisma.meeting.findMany({
+    const rows = await this.prisma.meeting.findMany({
       where: {
         archived: false,
         ...(canSeeAll ? {} : { createdById: user.id }),
@@ -40,6 +59,7 @@ export class MeetingsService {
         },
       },
     });
+    return rows.map((m) => this.sanitizeMeeting(m, user));
   }
 
   async create(
@@ -124,6 +144,14 @@ export class MeetingsService {
   }
 
   async decide(id: string, actorId: string, approve: boolean) {
+    if (typeof approve !== 'boolean') {
+      throw new BadRequestException('approve must be true or false');
+    }
+    const existing = await this.prisma.meeting.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundException();
+    if (existing.status !== MeetingStatus.REQUESTED) {
+      throw new BadRequestException(`Meeting is ${existing.status}; only REQUESTED can be decided`);
+    }
     const status = approve ? MeetingStatus.APPROVED : MeetingStatus.DECLINED;
     const m = await this.prisma.meeting.update({ where: { id }, data: { status } });
     await this.audit.record({
@@ -143,11 +171,18 @@ export class MeetingsService {
   ) {
     const m = await this.prisma.meeting.findUnique({ where: { id } });
     if (!m) throw new NotFoundException();
+    if (m.status !== MeetingStatus.APPROVED) {
+      throw new BadRequestException('Only approved meetings can be completed');
+    }
+    const minutes = (data.minutes || '').trim();
+    if (minutes.length < 20) {
+      throw new BadRequestException('Minutes required (min 20 characters)');
+    }
     const updated = await this.prisma.meeting.update({
       where: { id },
       data: {
         status: MeetingStatus.COMPLETED,
-        minutes: data.minutes,
+        minutes,
         outcome: data.outcome,
         decision: data.decision,
       },
@@ -230,12 +265,16 @@ export class MeetingsService {
     actionId: string,
     actor: { id: string; role: Role },
     opts?: { ownerId?: string; dueDate?: string },
+    meetingId?: string,
   ) {
     const action = await this.prisma.meetingAction.findUnique({
       where: { id: actionId },
       include: { meeting: true, direction: true },
     });
     if (!action) throw new NotFoundException('Action not found');
+    if (meetingId && action.meetingId !== meetingId) {
+      throw new BadRequestException('Action does not belong to this meeting');
+    }
     if (action.directionId && action.direction) {
       return { action, direction: action.direction };
     }

@@ -1,4 +1,4 @@
-import { Injectable, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { ThrottlerStorage } from '@nestjs/throttler';
 import type { ThrottlerStorageRecord } from '@nestjs/throttler/dist/throttler-storage-record.interface';
 import Redis from 'ioredis';
@@ -6,23 +6,56 @@ import Redis from 'ioredis';
 /** Redis-backed throttle counters; falls back to in-memory when Redis is down. */
 @Injectable()
 export class RedisThrottlerStorage implements ThrottlerStorage, OnModuleDestroy {
+  private readonly log = new Logger(RedisThrottlerStorage.name);
   private redis: Redis | null = null;
   private memory = new Map<string, { totalHits: number; expiresAt: number; isBlocked: boolean; blockExpiresAt: number }>();
 
   constructor() {
+    this.redis = this.createRedisClient();
+  }
+
+  private createRedisClient(): Redis | null {
     try {
-      this.redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', {
-        maxRetriesPerRequest: 1,
+      const client = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', {
+        maxRetriesPerRequest: 3,
         lazyConnect: true,
         enableOfflineQueue: false,
+        connectTimeout: 5000,
+        retryStrategy: (times: number) => (times > 20 ? null : Math.min(times * 200, 3000)),
+        reconnectOnError: (err: Error) => {
+          const msg = err.message || '';
+          return /READONLY|ETIMEDOUT|ECONNRESET|EPIPE/i.test(msg);
+        },
       });
-      this.redis.connect().catch(() => {
-        this.redis?.disconnect();
-        this.redis = null;
+      client.on('error', (err) => {
+        this.log.warn(`Redis throttle error: ${err.message}`);
       });
+      client.on('connect', () => {
+        this.log.debug('Redis throttle connected');
+      });
+      client.on('close', () => {
+        this.log.warn('Redis throttle connection closed — will retry');
+      });
+      client.connect().catch(() => {
+        this.log.warn('Redis throttle initial connect failed; using memory until reconnect');
+      });
+      return client;
     } catch {
+      return null;
+    }
+  }
+
+  /** Re-create client if the previous one was dropped after a command failure. */
+  private ensureRedis(): Redis | null {
+    if (this.redis && this.redis.status !== 'end') {
+      return this.redis;
+    }
+    if (this.redis) {
+      this.redis.disconnect();
       this.redis = null;
     }
+    this.redis = this.createRedisClient();
+    return this.redis;
   }
 
   async onModuleDestroy() {
@@ -36,10 +69,11 @@ export class RedisThrottlerStorage implements ThrottlerStorage, OnModuleDestroy 
     blockDuration: number,
     _throttlerName: string,
   ): Promise<ThrottlerStorageRecord> {
-    if (this.redis) {
+    const redis = this.ensureRedis();
+    if (redis && redis.status !== 'end') {
       try {
         const blockKey = `${key}:block`;
-        const blockedTtl = await this.redis.pttl(blockKey);
+        const blockedTtl = await redis.pttl(blockKey);
         if (blockedTtl > 0) {
           return {
             totalHits: limit + 1,
@@ -48,26 +82,30 @@ export class RedisThrottlerStorage implements ThrottlerStorage, OnModuleDestroy 
             timeToBlockExpire: blockedTtl,
           };
         }
-        const multi = this.redis.multi();
+        const multi = redis.multi();
         multi.incr(key);
         multi.pttl(key);
         const results = await multi.exec();
         const totalHits = Number(results?.[0]?.[1] || 1);
         let timeToExpire = Number(results?.[1]?.[1] || -1);
         if (timeToExpire < 0) {
-          await this.redis.pexpire(key, ttl);
+          await redis.pexpire(key, ttl);
           timeToExpire = ttl;
         }
         let isBlocked = false;
         let timeToBlockExpire = 0;
         if (totalHits > limit && blockDuration > 0) {
-          await this.redis.set(blockKey, '1', 'PX', blockDuration);
+          await redis.set(blockKey, '1', 'PX', blockDuration);
           isBlocked = true;
           timeToBlockExpire = blockDuration;
         }
         return { totalHits, timeToExpire, isBlocked, timeToBlockExpire };
-      } catch {
-        /* fall through */
+      } catch (err) {
+        this.log.warn(
+          `Redis throttle increment failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        this.redis?.disconnect();
+        this.redis = null;
       }
     }
 

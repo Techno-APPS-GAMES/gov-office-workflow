@@ -21,10 +21,12 @@ function LoginForm() {
   const [role, setRole] = useState<Role>(Role.SPEAKER);
   const [username, setUsername] = useState(ROLE_META[Role.SPEAKER].usernameHint);
   const [password, setPassword] = useState('');
+  const [totpCode, setTotpCode] = useState('');
   const [error, setError] = useState('');
   const [mfaQr, setMfaQr] = useState<string | null>(null);
   const [mfaCode, setMfaCode] = useState('');
   const [busy, setBusy] = useState(false);
+  const [needsTotp, setNeedsTotp] = useState(false);
 
   useEffect(() => {
     if (user && !mfaQr) {
@@ -42,7 +44,8 @@ function LoginForm() {
     setBusy(true);
     setError('');
     try {
-      const res = await login(username, password);
+      const res = await login(username, password, totpCode.trim() || undefined);
+      setNeedsTotp(false);
       if (res.mfaSetupRequired) {
         const setup = await api<{ qr: string }>('/auth/mfa/setup', { method: 'POST' });
         setMfaQr(setup.qr);
@@ -50,7 +53,13 @@ function LoginForm() {
         router.replace('/overview');
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : label('loginFailed'));
+      const msg = err instanceof Error ? err.message : label('loginFailed');
+      if (/MFA code required/i.test(msg)) {
+        setNeedsTotp(true);
+        setError(label('totp'));
+      } else {
+        setError(msg);
+      }
     } finally {
       setBusy(false);
     }
@@ -164,6 +173,18 @@ function LoginForm() {
                   autoComplete="current-password"
                   required
                   minLength={6}
+                />
+              </div>
+              <div className="field">
+                <label>{label('totp')}</label>
+                <input
+                  value={totpCode}
+                  onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  maxLength={6}
+                  placeholder="000000"
+                  required={needsTotp}
                 />
               </div>
               {error && <div className="error">{error}</div>}

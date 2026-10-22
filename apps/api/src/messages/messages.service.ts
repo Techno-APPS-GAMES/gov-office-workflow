@@ -5,13 +5,13 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { createHash } from 'crypto';
-import { Role } from '@prisma/client';
+import { Classification, Role } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { StorageService } from '../storage/storage.service';
 import { CryptoService } from '../crypto/crypto.service';
 import { scanUpload } from '../storage/virus-scan.hook';
-import { sanitizeFilename } from '../auth/access';
+import { assertMatterReadable, sanitizeFilename } from '../auth/access';
 
 const MAX_FILES = 5;
 const MAX_BYTES = 15 * 1024 * 1024;
@@ -63,6 +63,24 @@ export class MessagesService {
     }
   }
 
+  private decryptVerified(stored: string, textEnc: boolean) {
+    if (!textEnc || !stored) return true;
+    try {
+      this.crypto.decryptSecret(stored);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private async assertVaultAccess(matterId: string, userId: string, role: Role) {
+    if (role === Role.ADMIN) return;
+    const grant = await this.prisma.vaultGrant.findFirst({
+      where: { matterId, userId, expiresAt: { gt: new Date() } },
+    });
+    if (!grant) throw new ForbiddenException('Confidential matter locked — unlock vault first');
+  }
+
   private previewText(text: string, attachmentCount: number) {
     const t = (text || '').trim();
     if (t) return t.length > 80 ? `${t.slice(0, 80)}…` : t;
@@ -72,7 +90,14 @@ export class MessagesService {
   }
 
   private mapMessage<T extends { text: string; textEnc: boolean }>(m: T) {
-    return { ...m, text: this.open(m.text, m.textEnc), encrypted: true };
+    const encryptedAtRest = Boolean(m.textEnc && m.text);
+    return {
+      ...m,
+      text: this.open(m.text, m.textEnc),
+      encrypted: encryptedAtRest,
+      encryptedAtRest,
+      verified: encryptedAtRest ? this.decryptVerified(m.text, m.textEnc) : true,
+    };
   }
 
   async contacts(userId: string, q?: string) {
@@ -139,7 +164,7 @@ export class MessagesService {
         toUser: { select: { id: true, displayName: true, role: true, username: true } },
         attachments: { select: { id: true } },
       },
-      take: 500,
+      take: 80,
     });
 
     const byPeer = new Map<
@@ -213,9 +238,16 @@ export class MessagesService {
       data: { read: true },
     });
 
+    const verified = messages.every(
+      (m) => !m.textEnc || !m.text || this.decryptVerified(m.text, m.textEnc),
+    );
     return {
       peer,
-      encryption: { algorithm: 'AES-256-GCM', verified: true },
+      encryption: {
+        algorithm: 'AES-256-GCM',
+        mode: 'encrypted-at-rest',
+        verified,
+      },
       messages: messages.map((m) => this.mapMessage(m)),
     };
   }
@@ -234,7 +266,7 @@ export class MessagesService {
   }
 
   async send(
-    fromUserId: string,
+    user: { id: string; role: Role },
     data: {
       toUserId: string;
       text?: string;
@@ -243,6 +275,7 @@ export class MessagesService {
     },
     files: Express.Multer.File[] = [],
   ) {
+    const fromUserId = user.id;
     if (data.toUserId === fromUserId) {
       throw new ForbiddenException('Cannot message yourself');
     }
@@ -265,6 +298,10 @@ export class MessagesService {
     if (data.matterId) {
       const matter = await this.prisma.matter.findUnique({ where: { id: data.matterId } });
       if (!matter) throw new BadRequestException('Linked matter not found');
+      assertMatterReadable(matter, user);
+      if (matter.classification === Classification.CONFIDENTIAL) {
+        await this.assertVaultAccess(matter.id, user.id, user.role);
+      }
     }
 
     for (const f of files) this.assertAllowedFile(f);
@@ -320,7 +357,7 @@ export class MessagesService {
       data: {
         userId: data.toUserId,
         type: 'MESSAGE',
-        title: priority === 'URGENT' ? 'Urgent encrypted message' : 'New office message',
+        title: priority === 'URGENT' ? 'Urgent office message' : 'New office message',
         body: this.previewText(text, attachmentRows.length).slice(0, 200),
         recordId: msg.id,
       },
@@ -330,7 +367,7 @@ export class MessagesService {
       action: 'MESSAGE_SEND',
       entityType: 'Message',
       entityId: msg.id,
-      summary: `AES-256 encrypted message${data.matterId ? ' with matter link' : ''}${
+      summary: `Message sent (encrypted at rest)${data.matterId ? ' with matter link' : ''}${
         priority === 'URGENT' ? ' (URGENT)' : ''
       }`,
     });

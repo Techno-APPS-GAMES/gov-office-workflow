@@ -13,6 +13,7 @@ export type SessionUser = {
   mfaEnabled: boolean;
 };
 
+/** Prefer httpOnly `access_token` cookie; legacy localStorage access is not written on login. */
 function token(): string | null {
   if (typeof window === 'undefined') return null;
   return localStorage.getItem('gow_access');
@@ -23,8 +24,8 @@ function refreshToken(): string | null {
   return localStorage.getItem('gow_refresh');
 }
 
-export function setTokens(access: string, refresh: string) {
-  localStorage.setItem('gow_access', access);
+export function setTokens(_access: string, refresh: string) {
+  localStorage.removeItem('gow_access');
   localStorage.setItem('gow_refresh', refresh);
 }
 

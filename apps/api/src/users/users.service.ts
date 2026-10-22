@@ -131,9 +131,17 @@ export class UsersService {
       active?: boolean;
       password?: string;
     },
+    actorRole: Role = Role.ADMIN,
   ) {
     const existing = await this.prisma.user.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException('User not found');
+
+    if (actorRole !== Role.ADMIN) {
+      throw new BadRequestException('Only ADMIN may change user accounts');
+    }
+    if (data.role !== undefined && id === actorId) {
+      throw new BadRequestException('Cannot change your own role');
+    }
 
     if (data.email) {
       const email = data.email.trim().toLowerCase();
@@ -162,6 +170,13 @@ export class UsersService {
       },
       select,
     });
+
+    if (data.password || data.role !== undefined || data.active === false) {
+      await this.prisma.refreshToken.updateMany({
+        where: { userId: id, revoked: false },
+        data: { revoked: true },
+      });
+    }
 
     await this.audit.record({
       actorId,

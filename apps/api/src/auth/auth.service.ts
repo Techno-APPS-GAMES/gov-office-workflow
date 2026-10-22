@@ -21,11 +21,15 @@ export class AuthService {
     private audit: AuditService,
   ) {}
 
+  private hardened() {
+    return process.env.PILOT_MODE === 'true' || process.env.NODE_ENV === 'production';
+  }
+
   private accessSecret() {
     const s = process.env.JWT_ACCESS_SECRET;
     if (!s || s.length < 32) {
-      if (process.env.NODE_ENV === 'production') {
-        throw new Error('JWT_ACCESS_SECRET must be set (min 32 chars) in production');
+      if (this.hardened()) {
+        throw new Error('JWT_ACCESS_SECRET must be set (min 32 chars) in PILOT_MODE/production');
       }
       return 'dev-access-secret-change-me-32chars!!';
     }
@@ -34,8 +38,8 @@ export class AuthService {
   private refreshSecret() {
     const s = process.env.JWT_REFRESH_SECRET;
     if (!s || s.length < 32) {
-      if (process.env.NODE_ENV === 'production') {
-        throw new Error('JWT_REFRESH_SECRET must be set (min 32 chars) in production');
+      if (this.hardened()) {
+        throw new Error('JWT_REFRESH_SECRET must be set (min 32 chars) in PILOT_MODE/production');
       }
       return 'dev-refresh-secret-change-me-32chars!';
     }
@@ -152,8 +156,19 @@ export class AuthService {
     return { ok: true };
   }
 
-  async beginMfa(userId: string) {
+  async beginMfa(userId: string, opts?: { forceReset?: boolean; totpCode?: string }) {
     const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
+    // Do not wipe an enrolled MFA secret unless caller proves current TOTP (or force for first setup).
+    if (user.mfaEnabled && user.mfaSecretEnc) {
+      if (!opts?.forceReset) {
+        throw new BadRequestException('MFA already enabled — confirm with current code to re-enrol');
+      }
+      if (!opts.totpCode) throw new BadRequestException('Current MFA code required to re-enrol');
+      const existing = this.crypto.decryptSecret(user.mfaSecretEnc);
+      if (!authenticator.check(opts.totpCode, existing)) {
+        throw new UnauthorizedException('Invalid MFA code');
+      }
+    }
     const secret = authenticator.generateSecret();
     const enc = this.crypto.encryptSecret(secret);
     await this.prisma.user.update({

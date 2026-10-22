@@ -87,6 +87,46 @@ export class FilesService {
     });
   }
 
+  /** Strip secrets and redact locked confidential content before returning to clients. */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private sanitizeMatterForClient(
+    matter: Record<string, any>,
+    user: { id: string; role: Role },
+    vaultUnlocked: boolean,
+  ): any {
+    const {
+      filePasswordHash: _hash,
+      filePasswordHint: _hint,
+      ...rest
+    } = matter;
+    const classification = rest.classification as Classification | undefined;
+    const locked =
+      classification === Classification.CONFIDENTIAL &&
+      user.role !== Role.ADMIN &&
+      !vaultUnlocked;
+    if (!locked) return { ...rest, vaultUnlocked };
+    return {
+      ...rest,
+      vaultUnlocked: false,
+      subject: '[Confidential — unlock vault]',
+      body: '',
+      decisionText: null,
+      summaryAi: null,
+      extractedText: undefined,
+      attachments: Array.isArray(rest.attachments)
+        ? rest.attachments.map((a: { fileName?: string }) => ({
+            ...a,
+            fileName: a.fileName || 'attachment',
+            storageKey: undefined,
+            wrappedDek: undefined,
+            sha256: undefined,
+          }))
+        : rest.attachments,
+      notes: [],
+      versions: [],
+    };
+  }
+
   async list(user: { id: string; role: Role }) {
     const grantOk = {
       OR: [
@@ -135,11 +175,11 @@ export class FilesService {
         _count: { select: { attachments: true, routeSteps: true, letters: true } },
       },
     });
-    return rows.map((m) => ({
-      ...m,
-      vaultUnlocked: user.role === Role.ADMIN || (m.vaultGrants?.length || 0) > 0,
-      vaultGrants: undefined,
-    }));
+    return rows.map((m) => {
+      const vaultUnlocked = user.role === Role.ADMIN || (m.vaultGrants?.length || 0) > 0;
+      const { vaultGrants: _vg, ...row } = m;
+      return this.sanitizeMatterForClient(row, user, vaultUnlocked);
+    });
   }
 
   async dispatchedLetters(user: { id: string; role: Role }) {
@@ -187,10 +227,18 @@ export class FilesService {
     });
     if (!matter) throw new NotFoundException('Matter not found');
     assertMatterReadable(matter, user);
+    let vaultUnlocked = user.role === Role.ADMIN;
     if (matter.classification === Classification.CONFIDENTIAL) {
-      await this.assertVaultAccess(matter.id, user.id, user.role);
+      try {
+        await this.assertVaultAccess(matter.id, user.id, user.role);
+        vaultUnlocked = true;
+      } catch {
+        vaultUnlocked = false;
+      }
+    } else {
+      vaultUnlocked = true;
     }
-    return matter;
+    return this.sanitizeMatterForClient(matter, user, vaultUnlocked);
   }
 
   async assertVaultAccess(matterId: string, userId: string, role: Role) {
@@ -433,7 +481,7 @@ export class FilesService {
     user: { id: string; role: Role },
     templateId: string,
   ) {
-    const matter = await this.prisma.matter.findUniqueOrThrow({ where: { id: matterId } });
+    const matter = await this.assertCanMutateMatter(matterId, user);
     if (matter.holderId !== user.id && user.role !== Role.ADMIN) {
       throw new ForbiddenException('Only the current holder can apply a route template');
     }
@@ -483,10 +531,7 @@ export class FilesService {
     if (!file?.buffer?.length) throw new BadRequestException('File required');
     const scan = await scanUpload(file.buffer, file.originalname);
     if (!scan.clean) throw new BadRequestException(`Upload rejected by virus scan (${scan.engine})`);
-    const matter = await this.prisma.matter.findUniqueOrThrow({ where: { id: matterId } });
-    if (matter.classification === Classification.CONFIDENTIAL) {
-      await this.assertVaultAccess(matterId, user.id, user.role);
-    }
+    const matter = await this.assertCanMutateMatter(matterId, user);
     const encrypt = matter.classification === Classification.CONFIDENTIAL;
     let storageBytes = file.buffer;
     let wrappedDek: string | undefined;
@@ -519,7 +564,12 @@ export class FilesService {
       summary: `Attachment ${file.originalname} on ${matter.diaryNo}`,
     });
     // Best-effort OCR on register/attach so full-text search gets content without a second click.
-    if (String(process.env.OCR_ENABLED || 'true').toLowerCase() !== 'false') {
+    const allowConfidentialOcr =
+      String(process.env.OCR_ALLOW_CONFIDENTIAL || 'false').toLowerCase() === 'true';
+    if (
+      String(process.env.OCR_ENABLED || 'true').toLowerCase() !== 'false' &&
+      (matter.classification !== Classification.CONFIDENTIAL || allowConfidentialOcr)
+    ) {
       try {
         await this.ocr.extractAttachment(att.id, user);
       } catch {
@@ -539,6 +589,7 @@ export class FilesService {
       include: { matter: true },
     });
     if (!att) throw new NotFoundException();
+    assertMatterReadable(att.matter, user);
     if (att.matter.classification === Classification.CONFIDENTIAL) {
       await this.assertVaultAccess(att.matterId, user.id, user.role);
       if (!reason?.trim() || reason.trim().length < 5) {
@@ -585,7 +636,7 @@ export class FilesService {
     user: { id: string; role: Role },
     input: { toUserId: string; procedure: string; dueDate?: string; remarks?: string },
   ) {
-    const matter = await this.prisma.matter.findUniqueOrThrow({ where: { id: matterId } });
+    const matter = await this.assertCanMutateMatter(matterId, user);
     if (matter.holderId !== user.id && user.role !== Role.ADMIN) {
       throw new ForbiddenException('Only the current holder can route this matter');
     }
@@ -632,7 +683,8 @@ export class FilesService {
     return step;
   }
 
-  async acknowledge(matterId: string, user: { id: string }) {
+  async acknowledge(matterId: string, user: { id: string; role: Role }) {
+    await this.assertCanMutateMatter(matterId, user);
     const step = await this.prisma.routeStep.findFirst({
       where: { matterId, toUserId: user.id, status: 'AWAITING_RECEIPT' },
       orderBy: { createdAt: 'desc' },
@@ -670,15 +722,12 @@ export class FilesService {
     if (remarks.length < 10) {
       throw new BadRequestException('Remarks must be at least 10 characters');
     }
-    const matter = await this.prisma.matter.findUniqueOrThrow({ where: { id: matterId } });
+    const matter = await this.assertCanMutateMatter(matterId, user);
     if (matter.status === MatterStatus.CLOSED) {
       throw new BadRequestException('Cannot return a closed matter');
     }
     if (matter.holderId !== user.id && user.role !== Role.ADMIN) {
       throw new ForbiddenException('Only the current holder can return this matter');
-    }
-    if (matter.classification === Classification.CONFIDENTIAL) {
-      await this.assertVaultAccess(matterId, user.id, user.role);
     }
     if (matter.status === MatterStatus.AWAITING_RECEIPT) {
       throw new BadRequestException(
@@ -760,7 +809,8 @@ export class FilesService {
     return step;
   }
 
-  async completeProcedure(matterId: string, user: { id: string }, outcome: string) {
+  async completeProcedure(matterId: string, user: { id: string; role: Role }, outcome: string) {
+    await this.assertCanMutateMatter(matterId, user);
     const step = await this.prisma.routeStep.findFirst({
       where: { matterId, toUserId: user.id, status: 'IN_PROGRESS' },
       orderBy: { createdAt: 'desc' },
@@ -774,7 +824,7 @@ export class FilesService {
       where: { id: matterId },
       data: { status: MatterStatus.AWAITING_DECISION },
     });
-    await this.journey(matterId, 'PROCEDURE', `Completed: ${outcome}`, user.id);
+    await this.journey(matterId, 'PROCEDURE', outcome, user.id);
     return { ok: true };
   }
 
@@ -791,6 +841,11 @@ export class FilesService {
   ) {
     if (user.role !== Role.SPEAKER && user.role !== Role.ADMIN) {
       throw new ForbiddenException('Only Speaker can record decisions');
+    }
+    await this.assertCanMutateMatter(matterId, user);
+    const existing = await this.prisma.matter.findUniqueOrThrow({ where: { id: matterId } });
+    if (existing.status === MatterStatus.CLOSED) {
+      throw new BadRequestException('Cannot decide a closed matter');
     }
     let directionDue: Date | null = null;
     if (input.decisionType === 'DIRECTION') {
@@ -870,6 +925,7 @@ export class FilesService {
     fileName: string,
     method?: string,
   ) {
+    await this.assertCanMutateMatter(matterId, user);
     const reason = `OCR text layer from ${fileName}${method ? ` (${method})` : ''}`;
     const existing = await this.prisma.matterVersion.findFirst({
       where: {
@@ -997,6 +1053,7 @@ export class FilesService {
     if (user.role !== Role.SPEAKER && user.role !== Role.ADMIN) {
       throw new ForbiddenException();
     }
+    await this.assertCanMutateMatter(matterId, user);
     const openDirections = await this.prisma.direction.count({
       where: {
         matterId,

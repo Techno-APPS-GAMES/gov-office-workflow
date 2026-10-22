@@ -114,6 +114,7 @@ export default function PressPage() {
   const [busy, setBusy] = useState(false);
   const [aiBusy, setAiBusy] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
+  const [rejectForId, setRejectForId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [clipForm, setClipForm] = useState({
     outlet: '',
@@ -644,9 +645,9 @@ Human review is mandatory before official use. Working title: ${title}. Notes:\n
                         <input
                           className="speech-reject-input"
                           style={{ maxWidth: 220 }}
-                          value={editId === p.id ? rejectReason : ''}
+                          value={rejectForId === p.id ? rejectReason : ''}
                           onChange={(e) => {
-                            setEditId(p.id);
+                            setRejectForId(p.id);
                             setRejectReason(e.target.value);
                           }}
                           placeholder={label('spc_rejectReason')}
@@ -654,7 +655,9 @@ Human review is mandatory before official use. Working title: ${title}. Notes:\n
                         <button
                           type="button"
                           className="btn"
-                          disabled={busy || rejectReason.trim().length < 5 || editId !== p.id}
+                          disabled={
+                            busy || rejectReason.trim().length < 5 || rejectForId !== p.id
+                          }
                           onClick={() => setStatus(p.id, 'REJECTED', { reason: rejectReason })}
                         >
                           {label('prs_reject')}

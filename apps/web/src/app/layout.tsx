@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { cookies } from 'next/headers';
 import { Providers } from '@/components/Providers';
 import './globals.css';
 
@@ -8,9 +9,13 @@ export const metadata: Metadata = {
   icons: { icon: '/na-emblem-v4.png' },
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const langCookie = (await cookies()).get('gow_lang')?.value;
+  const lang = langCookie === 'ur' ? 'ur' : 'en';
+  const dir = lang === 'ur' ? 'rtl' : 'ltr';
+
   return (
-    <html lang="en">
+    <html lang={lang} dir={dir} className={lang === 'ur' ? 'lang-ur' : undefined}>
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />

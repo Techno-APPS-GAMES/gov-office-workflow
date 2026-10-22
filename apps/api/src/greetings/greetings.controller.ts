@@ -12,6 +12,11 @@ export class GreetingsController {
     return this.greetings.list(status);
   }
 
+  @Get('occasions')
+  occasions() {
+    return this.greetings.listOccasions();
+  }
+
   @Get(':id')
   get(@Param('id') id: string) {
     return this.greetings.get(id);
@@ -56,7 +61,7 @@ export class GreetingsController {
   @Patch(':id')
   update(
     @Param('id') id: string,
-    @CurrentUser() user: { id: string },
+    @CurrentUser() user: { id: string; role: Role },
     @Body()
     body: {
       occasion?: string;
@@ -76,6 +81,6 @@ export class GreetingsController {
       markHumanReviewed?: boolean;
     },
   ) {
-    return this.greetings.update(id, user.id, body);
+    return this.greetings.update(id, user, body);
   }
 }

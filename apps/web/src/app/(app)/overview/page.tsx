@@ -132,11 +132,16 @@ export default function OverviewPage() {
   const [unlockBusy, setUnlockBusy] = useState(false);
 
   const load = useCallback(async () => {
-    setDash(await api<Dash>('/health/dashboard'));
+    try {
+      setDash(await api<Dash>('/health/dashboard'));
+      setError('');
+    } catch (e) {
+      setError(String((e as Error).message || e));
+    }
   }, []);
 
   useEffect(() => {
-    load().catch((e) => setError(String(e.message || e)));
+    void load();
   }, [load]);
 
   useLiveRefresh(load, [load]);
@@ -175,7 +180,16 @@ export default function OverviewPage() {
     }
   }
 
-  if (error) return <div className="panel error">{error}</div>;
+  if (error && !dash) {
+    return (
+      <div className="panel error">
+        <p>{error}</p>
+        <button type="button" className="btn" onClick={() => void load()}>
+          Retry
+        </button>
+      </div>
+    );
+  }
   if (!dash) return <p className="muted">{label('ov_loading')}</p>;
 
   const k = dash.kpis;

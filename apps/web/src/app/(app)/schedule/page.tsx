@@ -111,6 +111,12 @@ function fmtTime(iso: string, locale?: string) {
   return new Date(iso).toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit' });
 }
 
+function toDatetimeLocal(iso: string) {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 function fmtRange(start: string, end: string, locale?: string) {
   const s = new Date(start);
   const date = s.toLocaleDateString(locale, {
@@ -195,6 +201,7 @@ export default function SchedulePage() {
     conflicts: { id: string; title: string; startAt: string; endAt: string; source: string }[];
     alternatives: { startAt: string; endAt: string; label: string }[];
   } | null>(null);
+  const [reschedule, setReschedule] = useState({ startAt: '', endAt: '' });
 
   const load = useCallback(async () => {
     const [sched, meets, dirs] = await Promise.all([
@@ -215,6 +222,17 @@ export default function SchedulePage() {
   }, [load]);
 
   useLiveRefresh(load, [load]);
+
+  useEffect(() => {
+    if (!selected || selected.source !== 'schedule') {
+      setReschedule({ startAt: '', endAt: '' });
+      return;
+    }
+    setReschedule({
+      startAt: toDatetimeLocal(selected.startAt),
+      endAt: toDatetimeLocal(selected.endAt),
+    });
+  }, [selected]);
 
   const engagements = useMemo(() => {
     const rows: Engagement[] = [];
@@ -335,6 +353,46 @@ export default function SchedulePage() {
       } else {
         toast.error(err instanceof Error ? err.message : label('createFailed'));
       }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeDiaryItem(id: string) {
+    if (!window.confirm(label('sch_confirmRemove'))) return;
+    setBusy(true);
+    try {
+      await api(`/schedule/${id}`, { method: 'DELETE' });
+      toast.success(label('sch_toastRemoved'));
+      setSelected(null);
+      await load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : label('createFailed'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function rescheduleDiary(e: FormEvent) {
+    e.preventDefault();
+    if (!selected || selected.source !== 'schedule') return;
+    setBusy(true);
+    try {
+      await api(`/schedule/${selected.id}`, { method: 'DELETE' });
+      await api('/schedule', {
+        method: 'POST',
+        json: {
+          title: selected.title,
+          location: selected.location === '—' ? undefined : selected.location,
+          startAt: new Date(reschedule.startAt).toISOString(),
+          endAt: new Date(reschedule.endAt).toISOString(),
+        },
+      });
+      toast.success(label('toast_saved'));
+      setSelected(null);
+      await load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : label('createFailed'));
     } finally {
       setBusy(false);
     }
@@ -719,7 +777,44 @@ export default function SchedulePage() {
               <Link href="/meetings" className="btn primary">
                 {label('sch_openInMeetings')}
               </Link>
-            ) : null}
+            ) : (
+              <>
+                <form className="grid-form" onSubmit={rescheduleDiary} style={{ marginTop: 16 }}>
+                  <div className="eyebrow">{label('sch_reschedule')}</div>
+                  <label>
+                    {label('mtg_start')}
+                    <input
+                      type="datetime-local"
+                      value={reschedule.startAt}
+                      onChange={(e) => setReschedule({ ...reschedule, startAt: e.target.value })}
+                      required
+                    />
+                  </label>
+                  <label>
+                    {label('mtg_end')}
+                    <input
+                      type="datetime-local"
+                      value={reschedule.endAt}
+                      onChange={(e) => setReschedule({ ...reschedule, endAt: e.target.value })}
+                      required
+                    />
+                  </label>
+                  <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+                    <button type="submit" className="btn primary" disabled={busy}>
+                      {label('sch_reschedule')}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn"
+                      disabled={busy}
+                      onClick={() => removeDiaryItem(selected.id)}
+                    >
+                      {label('delete')}
+                    </button>
+                  </div>
+                </form>
+              </>
+            )}
           </aside>
         </div>
       ) : null}

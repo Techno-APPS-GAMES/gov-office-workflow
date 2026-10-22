@@ -59,11 +59,11 @@ export class DirectionsService implements OnModuleInit, OnModuleDestroy {
       where: {
         dueDate: { lt: now },
         status: {
+          // Do not clobber EVIDENCE_SUBMITTED — Speaker must still be able to verify.
           in: [
             DirectionStatus.ISSUED,
             DirectionStatus.IN_PROGRESS,
             DirectionStatus.RETURNED,
-            DirectionStatus.EVIDENCE_SUBMITTED,
           ],
         },
       },
@@ -136,7 +136,15 @@ export class DirectionsService implements OnModuleInit, OnModuleDestroy {
     }));
   }
 
-  async activity(id: string) {
+  async activity(id: string, user: { id: string; role: Role }) {
+    const d = await this.prisma.direction.findUnique({ where: { id } });
+    if (!d) throw new NotFoundException();
+    const ok =
+      user.role === Role.SPEAKER ||
+      user.role === Role.ADMIN ||
+      d.ownerId === user.id ||
+      d.createdById === user.id;
+    if (!ok) throw new ForbiddenException();
     return this.prisma.auditEvent.findMany({
       where: { entityType: 'Direction', entityId: id },
       orderBy: { seq: 'desc' },
@@ -151,6 +159,14 @@ export class DirectionsService implements OnModuleInit, OnModuleDestroy {
     const d = await this.prisma.direction.findUnique({ where: { id } });
     if (!d) throw new NotFoundException();
     if (d.ownerId !== userId) throw new ForbiddenException();
+    if (
+      d.status !== DirectionStatus.ISSUED &&
+      d.status !== DirectionStatus.RETURNED
+    ) {
+      throw new BadRequestException(
+        'Only issued or returned directions can be resumed to in progress',
+      );
+    }
     const updated = await this.prisma.direction.update({
       where: { id },
       data: { status: DirectionStatus.IN_PROGRESS },
@@ -258,8 +274,23 @@ export class DirectionsService implements OnModuleInit, OnModuleDestroy {
   }
 
   async verify(id: string, actorId: string, approve: boolean) {
+    if (typeof approve !== 'boolean') {
+      throw new BadRequestException('approve must be true or false');
+    }
     const existing = await this.prisma.direction.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException();
+    if (existing.status !== DirectionStatus.EVIDENCE_SUBMITTED) {
+      throw new BadRequestException(
+        `Direction is ${existing.status}; only EVIDENCE_SUBMITTED can be verified`,
+      );
+    }
+    if (approve) {
+      const hasEvidence =
+        Boolean(existing.evidence?.trim()) || Boolean(existing.evidenceStorageKey);
+      if (!hasEvidence) {
+        throw new BadRequestException('Cannot approve without evidence text or file');
+      }
+    }
     const status = approve ? DirectionStatus.CLOSED : DirectionStatus.RETURNED;
     const d = await this.prisma.direction.update({ where: { id }, data: { status } });
     await this.audit.record({
@@ -317,6 +348,137 @@ export class DirectionsService implements OnModuleInit, OnModuleDestroy {
       `Direction escalated: ${d.title}`,
       user.id,
     );
+    return updated;
+  }
+
+  async extendDue(
+    id: string,
+    user: { id: string; role: Role },
+    dueDate: string,
+  ) {
+    const d = await this.prisma.direction.findUnique({ where: { id } });
+    if (!d) throw new NotFoundException();
+    const isSpeaker = user.role === Role.SPEAKER || user.role === Role.ADMIN;
+    const isOwner = d.ownerId === user.id;
+    const allowed: DirectionStatus[] = [
+      DirectionStatus.RETURNED,
+      DirectionStatus.ESCALATED,
+      DirectionStatus.OVERDUE,
+      DirectionStatus.IN_PROGRESS,
+    ];
+    if (!allowed.includes(d.status)) {
+      throw new BadRequestException(`Cannot extend due date while ${d.status}`);
+    }
+    if (!isSpeaker && !(isOwner && d.status === DirectionStatus.RETURNED)) {
+      throw new ForbiddenException();
+    }
+    const next = new Date(dueDate);
+    if (Number.isNaN(next.getTime())) {
+      throw new BadRequestException('Invalid due date');
+    }
+    const status =
+      d.status === DirectionStatus.OVERDUE ? DirectionStatus.IN_PROGRESS : d.status;
+    const updated = await this.prisma.direction.update({
+      where: { id },
+      data: { dueDate: next, status, reminderSentAt: null },
+    });
+    await this.audit.record({
+      actorId: user.id,
+      action: 'DIRECTION_EXTEND_DUE',
+      entityType: 'Direction',
+      entityId: id,
+      summary: `Due date extended to ${next.toISOString().slice(0, 10)}: ${d.title}`,
+    });
+    return updated;
+  }
+
+  async reassign(
+    id: string,
+    user: { id: string; role: Role },
+    ownerId: string,
+  ) {
+    if (user.role !== Role.SPEAKER && user.role !== Role.ADMIN) {
+      throw new ForbiddenException();
+    }
+    const d = await this.prisma.direction.findUnique({ where: { id } });
+    if (!d) throw new NotFoundException();
+    const allowed: DirectionStatus[] = [
+      DirectionStatus.RETURNED,
+      DirectionStatus.ESCALATED,
+      DirectionStatus.OVERDUE,
+      DirectionStatus.IN_PROGRESS,
+    ];
+    if (!allowed.includes(d.status)) {
+      throw new BadRequestException(`Cannot reassign while ${d.status}`);
+    }
+    const owner = await this.prisma.user.findUnique({ where: { id: ownerId } });
+    if (!owner?.active) throw new BadRequestException('Owner not found or inactive');
+    const updated = await this.prisma.direction.update({
+      where: { id },
+      data: { ownerId },
+    });
+    await this.audit.record({
+      actorId: user.id,
+      action: 'DIRECTION_REASSIGN',
+      entityType: 'Direction',
+      entityId: id,
+      summary: `Reassigned "${d.title}" to ${owner.displayName}`,
+    });
+    if (ownerId !== d.ownerId) {
+      await this.notifications.create(
+        ownerId,
+        'direction',
+        'Direction assigned to you',
+        `"${d.title}" was reassigned to you`,
+        id,
+      );
+    }
+    return updated;
+  }
+
+  async clearEscalated(
+    id: string,
+    user: { id: string; role: Role },
+    note: string,
+  ) {
+    if (user.role !== Role.SPEAKER && user.role !== Role.ADMIN) {
+      throw new ForbiddenException();
+    }
+    const d = await this.prisma.direction.findUnique({ where: { id } });
+    if (!d) throw new NotFoundException();
+    if (d.status !== DirectionStatus.ESCALATED) {
+      throw new BadRequestException('Only escalated directions can be cleared');
+    }
+    const text = (note || '').trim();
+    if (text.length < 5) {
+      throw new BadRequestException('Note required (min 5 characters)');
+    }
+    const updated = await this.prisma.direction.update({
+      where: { id },
+      data: { status: DirectionStatus.IN_PROGRESS },
+    });
+    await this.audit.record({
+      actorId: user.id,
+      action: 'DIRECTION_CLEAR_ESCALATION',
+      entityType: 'Direction',
+      entityId: id,
+      summary: `Escalation cleared: ${d.title} — ${text.slice(0, 120)}`,
+    });
+    await this.journeyOnMatter(
+      d.matterId,
+      'DIRECTION_CLEAR_ESCALATION',
+      `Escalation cleared: ${d.title}`,
+      user.id,
+    );
+    if (d.ownerId !== user.id) {
+      await this.notifications.create(
+        d.ownerId,
+        'direction',
+        'Escalation cleared',
+        `"${d.title}" returned to in progress. ${text.slice(0, 120)}`,
+        id,
+      );
+    }
     return updated;
   }
 }

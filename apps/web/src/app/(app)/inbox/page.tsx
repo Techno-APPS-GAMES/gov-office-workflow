@@ -6,7 +6,7 @@ import { api } from '@/lib/api';
 import { useAuth } from '@/components/AuthProvider';
 import { useToast } from '@/components/Toast';
 import { useLiveRefresh } from '@/lib/live-refresh';
-import { t, tf } from '@/lib/i18n';
+import { enumLabel, t, tf } from '@/lib/i18n';
 
 type Desk = {
   kpis: {
@@ -242,7 +242,12 @@ export default function InboxPage() {
               <li key={a.id} className={a.read ? 'read' : 'unread'}>
                 <span className={`activity-dot ${a.read ? '' : 'live'}`} />
                 <div className="activity-body">
-                  <strong>{a.title}</strong>
+                  <strong>
+                    <span className="muted" style={{ fontWeight: 600, marginRight: 6 }}>
+                      {enumLabel(lang, a.type.toUpperCase())}
+                    </span>
+                    {a.title}
+                  </strong>
                   <div className="muted">{a.body}</div>
                   <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>
                     {new Date(a.createdAt).toLocaleString()}
