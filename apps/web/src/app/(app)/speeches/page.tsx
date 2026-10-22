@@ -161,11 +161,14 @@ export default function SpeechesPage() {
     setRejectReason('');
   }, [selected]);
 
+  // Only reset when opening a different speech — not on live-refresh of the same item.
   useEffect(() => {
-    if (!prompter) return;
-    setPrompterLang(prompter.language === 'ur' ? 'ur' : 'en');
+    if (!prompterId) return;
+    const s = items.find((x) => x.id === prompterId);
+    setPrompterLang(s?.language === 'ur' ? 'ur' : 'en');
     setPrompterMode('remarks');
-  }, [prompter]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: open once per prompterId
+  }, [prompterId]);
 
   useEffect(() => {
     if (!prompter || scrollSpeed === 0) return;
@@ -290,18 +293,79 @@ export default function SpeechesPage() {
     }
   }
 
+  function hasUrduContent(s: Speech) {
+    if (prompterMode === 'points') return Boolean(s.talkingPointsUr?.trim());
+    return Boolean(s.bodyUr?.trim());
+  }
+
   function prompterText(s: Speech) {
     if (prompterMode === 'points') {
-      const pts =
-        prompterLang === 'ur'
-          ? s.talkingPointsUr || s.talkingPoints || ''
-          : s.talkingPoints || s.talkingPointsUr || '';
-      return pts.trim() || label('spc_noPoints');
+      if (prompterLang === 'ur') {
+        const pts = s.talkingPointsUr?.trim();
+        return pts || label('spc_noUrduPoints');
+      }
+      const pts = s.talkingPoints?.trim() || s.talkingPointsUr?.trim() || '';
+      return pts || label('spc_noPoints');
     }
     if (prompterLang === 'ur') {
-      return stripMarker(s.bodyUr || s.body);
+      const ur = s.bodyUr?.trim();
+      return ur ? stripMarker(ur) : label('spc_noUrduRemarks');
     }
-    return stripMarker(s.body);
+    return stripMarker(s.body) || label('spc_noRemarks');
+  }
+
+  async function ensureUrduForPrompter(s: Speech) {
+    const needRemarks = prompterMode === 'remarks' && !s.bodyUr?.trim() && Boolean(stripMarker(s.body));
+    const needPoints =
+      prompterMode === 'points' && !s.talkingPointsUr?.trim() && Boolean(s.talkingPoints?.trim());
+    if (!needRemarks && !needPoints) return;
+
+    setAiBusy(true);
+    try {
+      const source =
+        prompterMode === 'points'
+          ? (s.talkingPoints || '').trim()
+          : stripMarker(s.body);
+      const res = await api<{ answer: string; mode?: string }>('/ai/ask', {
+        method: 'POST',
+        json: {
+          matterId: s.matterId || undefined,
+          question: `TRANSLATE_TO_URDU_ONLY. Return only the Urdu translation (Nastaliq-ready), no English, no commentary. Human review required before official use.\n\nSOURCE:\n${source}`,
+        },
+      });
+      const translated = (res.answer || '').trim();
+      const looksLocal =
+        res.mode === 'local_briefing' ||
+        /Local grounded briefing|Workspace briefing|مستند بریفنگ/i.test(translated);
+      if (!translated || looksLocal) {
+        toast.error(label('spc_needUrduText'));
+        return;
+      }
+      const patch =
+        prompterMode === 'points'
+          ? { talkingPointsUr: translated, aiAssisted: true }
+          : { bodyUr: translated, aiAssisted: true };
+      await api(`/speeches/${s.id}`, { method: 'PATCH', json: patch });
+      toast.success(label('spc_toastUrduReady'));
+      notifyDataChanged();
+      await load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : label('spc_aiUnavailable'));
+    } finally {
+      setAiBusy(false);
+    }
+  }
+
+  async function togglePrompterLang() {
+    if (!prompter) return;
+    if (prompterLang === 'en') {
+      setPrompterLang('ur');
+      if (!hasUrduContent(prompter)) {
+        await ensureUrduForPrompter(prompter);
+      }
+    } else {
+      setPrompterLang('en');
+    }
   }
 
   return (
@@ -718,10 +782,15 @@ export default function SpeechesPage() {
               </button>
               <button
                 type="button"
-                className="btn"
-                onClick={() => setPrompterLang((l) => (l === 'en' ? 'ur' : 'en'))}
+                className={`btn ${prompterLang === 'ur' ? 'primary' : ''}`}
+                disabled={aiBusy}
+                onClick={() => void togglePrompterLang()}
               >
-                {prompterLang === 'en' ? label('spc_enToUr') : label('spc_urToEn')}
+                {aiBusy
+                  ? label('loading')
+                  : prompterLang === 'en'
+                    ? label('spc_enToUr')
+                    : label('spc_urToEn')}
               </button>
               <button
                 type="button"

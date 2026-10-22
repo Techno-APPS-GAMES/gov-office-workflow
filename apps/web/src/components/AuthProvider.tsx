@@ -25,25 +25,59 @@ type AuthCtx = {
 
 const Ctx = createContext<AuthCtx | null>(null);
 
+const LANG_KEY = 'gow_lang';
+
+function readStoredLang(): Lang {
+  if (typeof window === 'undefined') return 'en';
+  try {
+    const stored = localStorage.getItem(LANG_KEY);
+    if (stored === 'en' || stored === 'ur') return stored;
+  } catch {
+    /* ignore */
+  }
+  return 'en';
+}
+
+function applyDocumentLang(lang: Lang) {
+  if (typeof document === 'undefined') return;
+  const root = document.documentElement;
+  root.lang = lang === 'ur' ? 'ur' : 'en';
+  root.dir = lang === 'ur' ? 'rtl' : 'ltr';
+  root.classList.toggle('lang-ur', lang === 'ur');
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<SessionUser | null>(null);
-  const [lang, setLang] = useState<Lang>('en');
+  const [lang, setLangState] = useState<Lang>('en');
   const [ready, setReady] = useState(false);
+
+  const setLang = useCallback((next: Lang) => {
+    setLangState(next);
+    try {
+      localStorage.setItem(LANG_KEY, next);
+    } catch {
+      /* ignore */
+    }
+    applyDocumentLang(next);
+  }, []);
 
   useEffect(() => {
     setUser(loadUser());
-    const stored = localStorage.getItem('gow_lang') as Lang | null;
-    if (stored === 'en' || stored === 'ur') setLang(stored);
+    const stored = readStoredLang();
+    setLangState(stored);
+    applyDocumentLang(stored);
     setReady(true);
   }, []);
 
   useEffect(() => {
-    localStorage.setItem('gow_lang', lang);
-    const root = document.documentElement;
-    root.lang = lang === 'ur' ? 'ur' : 'en';
-    root.dir = lang === 'ur' ? 'rtl' : 'ltr';
-    root.classList.toggle('lang-ur', lang === 'ur');
-  }, [lang]);
+    if (!ready) return;
+    try {
+      localStorage.setItem(LANG_KEY, lang);
+    } catch {
+      /* ignore */
+    }
+    applyDocumentLang(lang);
+  }, [lang, ready]);
 
   const login = useCallback(async (username: string, password: string, totpCode?: string) => {
     const res = await api<{

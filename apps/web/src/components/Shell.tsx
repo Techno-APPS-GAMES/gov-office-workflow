@@ -5,7 +5,7 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { NAV_GROUPS } from '@gow/shared';
 import { useAuth } from './AuthProvider';
-import { pageTitle, roleTitle } from '@/lib/i18n';
+import { pageTitle, personName, roleTitle } from '@/lib/i18n';
 import { roleAvatar } from '@/lib/avatars';
 import { api, saveUser } from '@/lib/api';
 
@@ -118,7 +118,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
         <section className="login-left">
           <div>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/na-crest.png" alt="" className="login-emblem" />
+            <img src="/na-emblem-v4.png" alt="" className="login-emblem" />
             <div className="kicker">{label('kicker')}</div>
             <h1>{label('mfaRequired')}</h1>
             <p>{label('mfaRequiredHelp')}</p>
@@ -168,7 +168,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
       <aside className="sidebar">
         <div className="brand">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/na-crest.png" alt="" className="brand-mark" />
+          <img src="/na-emblem-v4.png" alt="" className="brand-mark" />
           <div>
             <strong>{label('appName')}</strong>
             <span>{label('brandSub')}</span>
@@ -213,7 +213,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
               <div className="avatar">{initials(user.displayName)}</div>
             )}
             <div>
-              <strong>{user.displayName}</strong>
+              <strong>{personName(lang, user.displayName)}</strong>
               <span>{roleTitle(lang, user.role)}</span>
             </div>
           </div>
@@ -255,7 +255,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
               ) : (
                 <span className="dot">{initials(user.displayName)}</span>
               )}
-              <span>{user.displayName}</span>
+              <span>{personName(lang, user.displayName)}</span>
             </div>
             <Link href="/inbox" className="notification-button">✉</Link>
             <span className="live-pill">{label('livePill')}</span>

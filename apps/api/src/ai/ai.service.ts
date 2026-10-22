@@ -239,6 +239,11 @@ export class AiService {
         data.choices?.[0]?.message?.content ||
         data.answer ||
         JSON.stringify(data).slice(0, 2000);
+    } else if (/^\s*TRANSLATE_TO_URDU/i.test(question)) {
+      // No remote model configured — cannot invent a faithful Urdu speech translation locally.
+      mode = 'local_briefing';
+      answer =
+        'LOCAL_BRIEFING: Urdu translation requires AI_ENDPOINT (or enter Remarks Urdu manually in Speeches).';
     } else {
       mode = 'local_briefing';
       answer = this.localBriefing(question, matter, recent);

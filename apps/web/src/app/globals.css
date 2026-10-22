@@ -1,4 +1,4 @@
-/* Original stylesheet â layout/IA aligned to office workflow UX; no third-party CSS copied. */
+/* Original stylesheet Ã¢ÂÂ layout/IA aligned to office workflow UX; no third-party CSS copied. */
 :root {
   --ink: #132825;
   --muted: #6f817c;
@@ -126,7 +126,7 @@ label {
   bottom: -8%;
   width: min(420px, 55vw);
   height: min(420px, 55vw);
-  background: url('/na-crest.png') center / contain no-repeat;
+  background: url('/na-emblem-v4.png') center / contain no-repeat;
   opacity: 0.12;
   pointer-events: none;
 }
@@ -167,6 +167,31 @@ label {
   background: var(--cream);
 }
 .login-box { max-width: 430px; width: 100%; }
+.login-lang {
+  display: inline-flex;
+  gap: 0;
+  margin: 0 0 22px;
+  border: 1px solid #c8d7ce;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #fff;
+}
+.login-lang button {
+  border: 0;
+  background: transparent;
+  padding: 9px 18px;
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--pine);
+  min-height: 36px;
+}
+.login-lang button.active {
+  background: var(--pine);
+  color: #fff;
+}
+.login-lang button:not(.active):hover {
+  background: #f2f8f3;
+}
 .login-box h2 { font-size: 27px; margin: 10px 0; }
 .login-box > p {
   color: var(--muted);
@@ -4382,7 +4407,7 @@ tr.focus {
   max-height: 360px;
 }
 
-/*  Urdu / RTL  */
+/* ÂÂÂ Urdu / RTL ÂÂÂ */
 html.lang-ur,
 html[dir='rtl'] {
   --font-body: 'Noto Nastaliq Urdu', 'DM Sans', Arial, sans-serif;
@@ -4449,7 +4474,7 @@ html[dir='rtl'] .login-left::after {
   right: auto;
   left: -4%;
 }
-/* In RTL, flex main-start is already on the right — keep natural order for brand/nav. */
+/* In RTL, flex main-start is already on the right â keep natural order for brand/nav. */
 html[dir='rtl'] .topright {
   flex-direction: row-reverse;
 }

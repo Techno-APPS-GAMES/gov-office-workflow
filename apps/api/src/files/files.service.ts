@@ -16,6 +16,7 @@ import { scanUpload } from '../storage/virus-scan.hook';
 import { assertMatterReadable, canSeeAllMatters } from '../auth/access';
 import { DakService } from '../dak/dak.service';
 import { OcrService } from '../ocr/ocr.service';
+import { AiService } from '../ai/ai.service';
 
 @Injectable()
 export class FilesService {
@@ -27,7 +28,58 @@ export class FilesService {
     private notifications: NotificationsService,
     private dak: DakService,
     @Inject(forwardRef(() => OcrService)) private ocr: OcrService,
+    private ai: AiService,
   ) {}
+
+  private classLabel(lang: 'en' | 'ur', value: string) {
+    if (lang === 'en') return value;
+    const map: Record<string, string> = {
+      INTERNAL: 'داخلی',
+      CONFIDENTIAL: 'خفیہ',
+      SECRET: 'سری',
+      PUBLIC: 'عوامی',
+    };
+    return map[value] || value;
+  }
+
+  private priorityLabel(lang: 'en' | 'ur', value: string) {
+    if (lang === 'en') return value;
+    const map: Record<string, string> = {
+      NORMAL: 'عام',
+      HIGH: 'اعلیٰ',
+      URGENT: 'فوری',
+      ROUTINE: 'معمول',
+    };
+    return map[value] || value;
+  }
+
+  private localUrduSummary(matter: {
+    diaryNo: string;
+    subject: string;
+    sender: string;
+    classification: string;
+    priority: string;
+    body: string;
+  }) {
+    const excerpt = matter.body.replace(/\s+/g, ' ').trim().slice(0, 500);
+    return [
+      'خلاصہ (خودکار — انسانی قبولیت درکار)',
+      '',
+      `ڈائری نمبر: ${matter.diaryNo}`,
+      `موضوع: ${matter.subject}`,
+      `ارسال کنندہ: ${matter.sender}`,
+      `درجہ بندی: ${this.classLabel('ur', matter.classification)}`,
+      `ترجیح: ${this.priorityLabel('ur', matter.priority)}`,
+      '',
+      'مختصر اردو جائزہ:',
+      'اس فائل میں مندرجہ بالا موضوع پر کارروائی/مشورے کی درخواست کی گئی ہے۔ براہِ کرم مطالبہ کا جائزہ لیں، ضروری اجلاس یا ہدایت کی ضرورت طے کریں، اور اہم نکات نوٹ کریں۔',
+      '',
+      'اہم اقتباسِ مراسلہ (ترجمہ نہیں — ماخذ متن):',
+      excerpt + (matter.body.length > 500 ? '…' : ''),
+      '',
+      'نوٹ: یہ خودکار خلاصہ ہے؛ سرکاری استعمال سے پہلے انسانی قبولیت ضروری ہے۔',
+    ].join('\n');
+  }
 
   private async journey(matterId: string, kind: string, summary: string, actorId?: string) {
     await this.prisma.journeyEvent.create({
@@ -282,10 +334,48 @@ export class FilesService {
     lang: 'en' | 'ur' = 'en',
   ) {
     const matter = await this.assertCanMutateMatter(matterId, user);
-    const urdu = lang === 'ur';
-    const summary = urdu
-      ? `خلاصہ (خودکار — انسانی قبولیت درکار)\nڈائری: ${matter.diaryNo}\nموضوع: ${matter.subject}\nارسال کنندہ: ${matter.sender}\nدرجہ بندی: ${matter.classification}\n\n${matter.body.slice(0, 800)}${matter.body.length > 800 ? '…' : ''}`
-      : `Auto summary (requires human accept)\nDiary: ${matter.diaryNo}\nSubject: ${matter.subject}\nSender: ${matter.sender}\nClassification: ${matter.classification}\nPriority: ${matter.priority}\n\nExcerpt:\n${matter.body.slice(0, 800)}${matter.body.length > 800 ? '…' : ''}`;
+    let summary: string;
+
+    if (lang === 'ur') {
+      try {
+        const ai = await this.ai.ask(
+          user,
+          [
+            'Write a complete official file SUMMARY in Urdu only (Nastaliq-ready).',
+            'Do NOT paste long English paragraphs. Paraphrase the request in clear Urdu.',
+            'Include labeled lines for: ڈائری، موضوع، ارسال کنندہ، درجہ بندی، ترجیح، ثم مختصر مطالبہ، اہم نکات (۳ اگر ممکن ہو).',
+            'Translate classification/priority into Urdu words (داخلی/خفیہ، عام/اعلیٰ/فوری).',
+            'Diary numbers and proper names may stay as-is.',
+            'End with: نوٹ: انسانی قبولیت سے پہلے سرکاری استعمال نہ کریں۔',
+            'Output Urdu text only — no English sentences.',
+          ].join(' '),
+          matterId,
+        );
+        const text = (ai.answer || '').trim();
+        const looksLocal =
+          ai.mode === 'local_briefing' ||
+          /Local grounded briefing|Workspace briefing|LOCAL_BRIEFING/i.test(text);
+        summary =
+          text && !looksLocal && /[\u0600-\u06FF]/.test(text)
+            ? text
+            : this.localUrduSummary(matter);
+      } catch {
+        summary = this.localUrduSummary(matter);
+      }
+    } else {
+      summary = [
+        'Auto summary (requires human accept)',
+        `Diary: ${matter.diaryNo}`,
+        `Subject: ${matter.subject}`,
+        `Sender: ${matter.sender}`,
+        `Classification: ${matter.classification}`,
+        `Priority: ${matter.priority}`,
+        '',
+        'Excerpt:',
+        matter.body.slice(0, 800) + (matter.body.length > 800 ? '…' : ''),
+      ].join('\n');
+    }
+
     const updated = await this.prisma.matter.update({
       where: { id: matterId },
       data: {

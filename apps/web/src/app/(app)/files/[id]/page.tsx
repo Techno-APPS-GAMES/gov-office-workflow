@@ -212,11 +212,12 @@ function MatterDetailInner() {
               </p>
             )}
             <textarea
-              rows={6}
+              rows={8}
               data-live-keep="summary"
               value={summaryEdit}
               onChange={(e) => setSummaryEdit(e.target.value)}
               placeholder={label('fd_noSummary')}
+              dir={summaryLang === 'ur' ? 'rtl' : 'ltr'}
               style={{ width: '100%', marginBottom: 8 }}
             />
             <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
@@ -235,6 +236,9 @@ function MatterDetailInner() {
                         json: { lang: summaryLang },
                       }).then((m: any) => {
                         setSummaryEdit(m.aiSummary || '');
+                        if (m.aiSummaryLang === 'en' || m.aiSummaryLang === 'ur') {
+                          setSummaryLang(m.aiSummaryLang);
+                        }
                       }),
                     label('fd_toastSummaryGen'),
                   )

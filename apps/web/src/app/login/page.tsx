@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Role, ROLE_META } from '@gow/shared';
-import { AuthProvider, useAuth } from '@/components/AuthProvider';
+import { useAuth } from '@/components/AuthProvider';
 import { api } from '@/lib/api';
 import { roleAvatar } from '@/lib/avatars';
 import { roleBlurb, roleTitle } from '@/lib/i18n';
@@ -16,7 +16,7 @@ const PICKABLE: Role[] = [
 ];
 
 function LoginForm() {
-  const { login, label, lang, user, refreshMe } = useAuth();
+  const { login, label, lang, setLang, user, refreshMe } = useAuth();
   const router = useRouter();
   const [role, setRole] = useState<Role>(Role.SPEAKER);
   const [username, setUsername] = useState(ROLE_META[Role.SPEAKER].usernameHint);
@@ -77,7 +77,7 @@ function LoginForm() {
       <section className="login-left">
         <div>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/na-crest.png" alt="National Assembly Secretariat" className="login-emblem" />
+          <img src="/na-emblem-v4.png" alt="National Assembly Secretariat" className="login-emblem" />
           <div className="kicker">{label('kicker')}</div>
           <h1>{label('appName')}</h1>
           <p>{label('tagline')}</p>
@@ -91,6 +91,22 @@ function LoginForm() {
       </section>
       <section className="login-right">
         <div className="login-box">
+          <div className="login-lang" role="group" aria-label="Language">
+            <button
+              type="button"
+              className={lang === 'en' ? 'active' : ''}
+              onClick={() => setLang('en')}
+            >
+              English
+            </button>
+            <button
+              type="button"
+              className={lang === 'ur' ? 'active' : ''}
+              onClick={() => setLang('ur')}
+            >
+              اردو
+            </button>
+          </div>
           {mfaQr ? (
             <form className="grid-form" onSubmit={confirmMfa}>
               <h2>{label('mfaEnableTitle')}</h2>
@@ -164,9 +180,5 @@ function LoginForm() {
 }
 
 export default function LoginPage() {
-  return (
-    <AuthProvider>
-      <LoginForm />
-    </AuthProvider>
-  );
+  return <LoginForm />;
 }

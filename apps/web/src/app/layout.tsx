@@ -1,10 +1,11 @@
 import type { Metadata } from 'next';
+import { Providers } from '@/components/Providers';
 import './globals.css';
 
 export const metadata: Metadata = {
   title: 'National Assembly Secretariat',
   description: 'Official workspace — National Assembly Secretariat',
-  icons: { icon: '/na-crest.png' },
+  icons: { icon: '/na-emblem-v4.png' },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -18,7 +19,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           rel="stylesheet"
         />
       </head>
-      <body>{children}</body>
+      <body>
+        <Providers>{children}</Providers>
+      </body>
     </html>
   );
 }

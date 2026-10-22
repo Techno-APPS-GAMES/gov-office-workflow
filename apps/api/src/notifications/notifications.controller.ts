@@ -1,4 +1,5 @@
 import { Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { SkipThrottle } from '@nestjs/throttler';
 import { Role } from '@prisma/client';
 import { NotificationsService } from './notifications.service';
 import { CurrentUser } from '../auth/current-user.decorator';
@@ -24,6 +25,8 @@ export class NotificationsController {
     });
   }
 
+  /** Polled by the shell — exclude from rate limits. */
+  @SkipThrottle()
   @Get('unread-count')
   unreadCount(@CurrentUser() user: { id: string }) {
     return this.notifications.unreadCount(user.id);

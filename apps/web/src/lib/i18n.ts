@@ -169,6 +169,13 @@ const en: Record<string, string> = {
   role_ADMIN_title: 'Administrator',
   role_ADMIN_blurb: 'Full system administration',
 
+  // Seeded staff display names (shown in shell / lists)
+  person_Office_Speaker: 'Office Speaker',
+  person_Secretary_General: 'Secretary General',
+  person_Special_Secretary: 'Special Secretary',
+  person_DG_Information_Technology: 'DG Information Technology',
+  person_System_Administrator: 'System Administrator',
+
   // Enums — matter status
   enum_INTERNAL: 'Internal',
   enum_CONFIDENTIAL: 'Confidential',
@@ -1258,6 +1265,11 @@ const en: Record<string, string> = {
   spc_mirror: 'Mirror',
   spc_exit: 'Exit',
   spc_noPoints: 'No talking points recorded.',
+  spc_noRemarks: 'No remarks recorded.',
+  spc_noUrduRemarks: 'No Urdu remarks yet. Add them in the speech editor (Remarks Urdu), then reopen the prompter — or tap EN → UR again to auto-translate if AI is configured.',
+  spc_noUrduPoints: 'No Urdu talking points yet. Add them in the speech editor, or tap EN → UR again to auto-translate if AI is configured.',
+  spc_needUrduText: 'Urdu text is missing. Enter Remarks (Urdu) in the speech drawer, save, then use EN → UR.',
+  spc_toastUrduReady: 'Urdu version ready for prompter',
   spc_toastPrepared: 'Speech prepared',
   spc_toastReviewed: 'Human review recorded',
   spc_toastSaved: 'Speech saved',
@@ -1790,6 +1802,12 @@ const ur: Record<string, string> = {
   role_DG_IT_blurb: 'آڈٹ سالمیت اور میٹا ڈیٹا',
   role_ADMIN_title: 'ایڈمنسٹریٹر',
   role_ADMIN_blurb: 'مکمل نظامی انتظام',
+
+  person_Office_Speaker: 'آفس اسپیکر',
+  person_Secretary_General: 'سیکرٹری جنرل',
+  person_Special_Secretary: 'سپیشل سیکرٹری',
+  person_DG_Information_Technology: 'ڈی جی انفارمیشن ٹیکنالوجی',
+  person_System_Administrator: 'سسٹم ایڈمنسٹریٹر',
 
   enum_INTERNAL: 'داخلی',
   enum_CONFIDENTIAL: 'خفیہ',
@@ -2856,6 +2874,11 @@ const ur: Record<string, string> = {
   spc_mirror: 'عکس',
   spc_exit: 'باہر نکلیں',
   spc_noPoints: 'کوئی بنیادی نکات درج نہیں۔',
+  spc_noRemarks: 'کوئی خطاب درج نہیں۔',
+  spc_noUrduRemarks: 'ابھی اردو خطاب نہیں۔ تقریر ایڈیٹر میں (خطاب اردو) لکھیں، محفوظ کریں، پھر پرامپٹر کھولیں — یا اگر اے آئی دستیاب ہو تو دوبارہ EN → UR دبائیں۔',
+  spc_noUrduPoints: 'ابھی اردو نکات نہیں۔ ایڈیٹر میں شامل کریں، یا اے آئی سے ترجمہ کے لیے EN → UR دوبارہ دبائیں۔',
+  spc_needUrduText: 'اردو متن موجود نہیں۔ تقریر کے خانے میں خطاب (اردو) لکھ کر محفوظ کریں، پھر EN → UR استعمال کریں۔',
+  spc_toastUrduReady: 'اردو ورژن پرامپٹر کے لیے تیار',
   spc_toastPrepared: 'تقریر تیار ہو گئی',
   spc_toastReviewed: 'انسانی جائزہ درج ہو گیا',
   spc_toastSaved: 'تقریر محفوظ ہو گئی',
@@ -3261,6 +3284,14 @@ export function roleBlurb(lang: Lang, role?: string | null) {
   const key = `role_${role}_blurb`;
   const v = t(lang, key);
   return v === key ? '' : v;
+}
+
+/** Localize known seeded staff display names (e.g. Office Speaker → آفس اسپیکر). */
+export function personName(lang: Lang, name?: string | null) {
+  if (!name) return '';
+  const key = `person_${name.replace(/\s+/g, '_')}`;
+  const v = t(lang, key);
+  return v === key ? name : v;
 }
 
 /** Translate API enum / status codes when a dictionary entry exists. */
