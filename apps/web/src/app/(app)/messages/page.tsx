@@ -13,7 +13,7 @@ import { api } from '@/lib/api';
 import { useAuth } from '@/components/AuthProvider';
 import { useToast } from '@/components/Toast';
 import { roleAvatar } from '@/lib/avatars';
-import { ROLE_META, type Role } from '@gow/shared';
+import { enumLabel, roleTitle, tf } from '@/lib/i18n';
 
 type Peer = {
   id: string;
@@ -47,12 +47,7 @@ type ThreadMsg = {
   attachments?: MsgFile[];
 };
 
-const QUICK = [
-  'Reviewed & concurred',
-  'Submit draft note',
-  'Held for meeting',
-  'Approved for dispatch',
-];
+const QUICK_KEYS = ['ms_quick1', 'ms_quick2', 'ms_quick3', 'ms_quick4'];
 
 function formatBytes(n: number) {
   if (n < 1024) return `${n} B`;
@@ -69,17 +64,13 @@ function authHeaders(): HeadersInit {
   return t ? { Authorization: `Bearer ${t}` } : {};
 }
 
-function roleLabel(role?: string) {
-  if (!role) return '';
-  return ROLE_META[role as Role]?.title || role.replace(/_/g, ' ');
-}
-
 function timeShort(iso: string | null) {
   if (!iso) return '';
   return new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 }
 
 function AttachmentImage({ id, fileName }: { id: string; fileName: string }) {
+  const { label } = useAuth();
   const [src, setSrc] = useState<string | null>(null);
   useEffect(() => {
     let url: string | null = null;
@@ -104,7 +95,7 @@ function AttachmentImage({ id, fileName }: { id: string; fileName: string }) {
       if (url) URL.revokeObjectURL(url);
     };
   }, [id]);
-  if (!src) return <span className="muted">Loading image…</span>;
+  if (!src) return <span className="muted">{label('ms_loadingImage')}</span>;
   return (
     // eslint-disable-next-line @next/next/no-img-element
     <img src={src} alt={fileName} />
@@ -132,7 +123,7 @@ function PeerAvatar({ peer, size = 40 }: { peer: Peer; size?: number }) {
 }
 
 export default function MessagesPage() {
-  const { user } = useAuth();
+  const { user, lang, label } = useAuth();
   const toast = useToast();
   const searchParams = useSearchParams();
   const historyRef = useRef<HTMLDivElement>(null);
@@ -195,7 +186,7 @@ export default function MessagesPage() {
     if (!list) return;
     const next = [...files, ...Array.from(list)].slice(0, 5);
     if (next.some((f) => f.size > 15 * 1024 * 1024)) {
-      toast.error('Max 15 MB per file');
+      toast.error(label('ms_maxFile'));
       return;
     }
     setFiles(next);
@@ -207,7 +198,7 @@ export default function MessagesPage() {
         headers: authHeaders(),
         credentials: 'include',
       });
-      if (!res.ok) throw new Error('Download failed');
+      if (!res.ok) throw new Error(label('ms_downloadFailed'));
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -216,7 +207,7 @@ export default function MessagesPage() {
       a.click();
       URL.revokeObjectURL(url);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Download failed');
+      toast.error(err instanceof Error ? err.message : label('ms_downloadFailed'));
     }
   }
 
@@ -226,7 +217,7 @@ export default function MessagesPage() {
     if (!toUserId) return;
     const body = (preset || text).trim();
     if (!body && files.length === 0) {
-      toast.error('Write a message or attach a file');
+      toast.error(label('ms_writeOrAttach'));
       return;
     }
     setBusy(true);
@@ -256,10 +247,10 @@ export default function MessagesPage() {
       setText('');
       setFiles([]);
       if (fileRef.current) fileRef.current.value = '';
-      toast.success('Encrypted message sent');
+      toast.success(label('ms_sent'));
       await openThread(toUserId);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Send failed');
+      toast.error(err instanceof Error ? err.message : label('ms_sendFailed'));
     } finally {
       setBusy(false);
     }
@@ -269,29 +260,26 @@ export default function MessagesPage() {
     <>
       <div className="overview-hero msg-hero">
         <div>
-          <div className="eyebrow">SPEAKER&apos;S OFFICE · MODULE 9</div>
-          <h1>Encrypted office messages</h1>
-          <p className="muted">
-            End-to-end AES-256 executive messaging between Speaker, Secretary General and Special
-            Secretary — with matter linkage and immutable audit ledger logging.
-          </p>
+          <div className="eyebrow">{label('ms_eyebrow')}</div>
+          <h1>{label('messages')}</h1>
+          <p className="muted">{label('ms_heroBody')}</p>
         </div>
-        <div className="e2ee-pill">🔒 End-to-end Encrypted (AES-256)</div>
+        <div className="e2ee-pill">{label('ms_e2eePill')}</div>
       </div>
 
       <div className="messages-layout e2ee-layout">
         <aside className="messages-list panel">
           <div className="contacts-head">
-            <h2>Executive contacts</h2>
+            <h2>{label('ms_executiveContacts')}</h2>
             <button type="button" className="btn tiny-link" onClick={() => loadContacts()}>
-              Refresh
+              {label('refresh')}
             </button>
           </div>
           <div className="field" style={{ marginBottom: 10 }}>
             <input
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
-              placeholder="Search officers…"
+              placeholder={label('ms_searchOfficers')}
             />
           </div>
           <ul className="messages-peers">
@@ -310,7 +298,7 @@ export default function MessagesPage() {
                         {c.unread > 0 && <span className="messages-unread">{c.unread}</span>}
                       </span>
                       <span className="muted" style={{ fontSize: 11 }}>
-                        {roleLabel(c.peer.role)}
+                        {roleTitle(lang, c.peer.role)}
                         {c.lastAt ? ` · ${timeShort(c.lastAt)}` : ''}
                       </span>
                       <span className="messages-preview">{c.lastText}</span>
@@ -319,18 +307,15 @@ export default function MessagesPage() {
                 </button>
               </li>
             ))}
-            {!contacts.length && <li className="muted" style={{ padding: 8 }}>No officers found.</li>}
+            {!contacts.length && <li className="muted" style={{ padding: 8 }}>{label('ms_noOfficers')}</li>}
           </ul>
         </aside>
 
         <section className="messages-thread panel">
           {!peer && (
             <div className="messages-empty">
-              <h2>Select an officer</h2>
-              <p className="muted">
-                Choose an executive contact to open an AES-256 encrypted thread with attachments,
-                priority and matter linkage.
-              </p>
+              <h2>{label('ms_selectOfficer')}</h2>
+              <p className="muted">{label('ms_selectOfficerBody')}</p>
             </div>
           )}
 
@@ -342,17 +327,17 @@ export default function MessagesPage() {
                   <div>
                     <h2 style={{ marginBottom: 2 }}>{peer.displayName}</h2>
                     <p className="muted" style={{ margin: 0 }}>
-                      <span className="online-dot" /> Online · {roleLabel(peer.role)}
+                      <span className="online-dot" /> {label('ms_online')} · {roleTitle(lang, peer.role)}
                       {peer.username ? ` · @${peer.username}` : ''}
                     </p>
                   </div>
                 </div>
-                <span className="e2ee-chip">🔒 AES-256 E2EE VERIFIED</span>
+                <span className="e2ee-chip">{label('ms_e2eeVerified')}</span>
               </div>
 
               <div className="messages-history" ref={historyRef}>
                 {thread.length === 0 && (
-                  <p className="muted">No messages yet — send the first encrypted note.</p>
+                  <p className="muted">{label('ms_noMessages')}</p>
                 )}
                 {thread.map((m) => {
                   const mine = m.fromUserId === user?.id;
@@ -360,8 +345,10 @@ export default function MessagesPage() {
                     <div key={m.id} className={`bubble ${mine ? 'mine' : 'theirs'}`}>
                       <div className="bubble-meta">
                         <span>
-                          {mine ? 'You' : m.fromUser?.displayName || peer.displayName}
-                          {m.priority === 'URGENT' && <span className="urgent-tag">Urgent</span>}
+                          {mine ? label('ms_you') : m.fromUser?.displayName || peer.displayName}
+                          {m.priority === 'URGENT' && (
+                            <span className="urgent-tag">{enumLabel(lang, 'URGENT')}</span>
+                          )}
                         </span>
                         <span>{new Date(m.createdAt).toLocaleString()}</span>
                       </div>
@@ -383,7 +370,7 @@ export default function MessagesPage() {
                                   className="linkish"
                                   onClick={() => downloadAttachment(a.id, a.fileName)}
                                 >
-                                  {a.fileName} · download
+                                  {a.fileName} · {label('download').toLowerCase()}
                                 </button>
                               </div>
                             ) : (
@@ -401,7 +388,11 @@ export default function MessagesPage() {
                         </div>
                       )}
                       <div className="bubble-read muted">
-                        {mine ? (m.read ? '✓✓ Encrypted · Seen' : '✓✓ Encrypted · Sent') : '✓✓ Encrypted'}
+                        {mine
+                          ? m.read
+                            ? label('ms_seen')
+                            : label('ms_sentStatus')
+                          : label('ms_encrypted')}
                       </div>
                     </div>
                   );
@@ -409,9 +400,15 @@ export default function MessagesPage() {
               </div>
 
               <div className="quick-replies">
-                {QUICK.map((q) => (
-                  <button key={q} type="button" className="chip" disabled={busy} onClick={() => send(undefined, q)}>
-                    {q}
+                {QUICK_KEYS.map((k) => (
+                  <button
+                    key={k}
+                    type="button"
+                    className="chip"
+                    disabled={busy}
+                    onClick={() => send(undefined, label(k))}
+                  >
+                    {label(k)}
                   </button>
                 ))}
               </div>
@@ -432,11 +429,11 @@ export default function MessagesPage() {
               >
                 <div className="composer-controls">
                   <select value={priority} onChange={(e) => setPriority(e.target.value)}>
-                    <option value="ROUTINE">Routine</option>
-                    <option value="URGENT">Urgent</option>
+                    <option value="ROUTINE">{enumLabel(lang, 'ROUTINE')}</option>
+                    <option value="URGENT">{enumLabel(lang, 'URGENT')}</option>
                   </select>
                   <select value={matterId} onChange={(e) => setMatterId(e.target.value)}>
-                    <option value="">No linked matter</option>
+                    <option value="">{label('ms_noLinkedMatter')}</option>
                     {matters.map((m) => (
                       <option key={m.id} value={m.id}>
                         {m.diaryNo} — {m.subject.slice(0, 40)}
@@ -482,15 +479,13 @@ export default function MessagesPage() {
                         void send();
                       }
                     }}
-                    placeholder={`Type an encrypted message to ${peer.displayName} (Press Enter to send)…`}
+                    placeholder={tf(lang, 'ms_typePh', { name: peer.displayName })}
                   />
                   <button className="btn primary" type="submit" disabled={busy}>
-                    {busy ? 'Sending…' : '🔒 Send'}
+                    {busy ? label('ms_sending') : label('ms_sendBtn')}
                   </button>
                 </div>
-                <p className="composer-hint muted">
-                  AES-256-GCM at rest · audited send · attachments virus-scanned · Enter to send · Shift+Enter new line
-                </p>
+                <p className="composer-hint muted">{label('ms_composerHint')}</p>
               </form>
             </>
           )}

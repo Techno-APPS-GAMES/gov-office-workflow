@@ -39,8 +39,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     localStorage.setItem('gow_lang', lang);
-    document.documentElement.lang = lang;
-    document.documentElement.dir = lang === 'ur' ? 'rtl' : 'ltr';
+    const root = document.documentElement;
+    root.lang = lang === 'ur' ? 'ur' : 'en';
+    root.dir = lang === 'ur' ? 'rtl' : 'ltr';
+    root.classList.toggle('lang-ur', lang === 'ur');
   }, [lang]);
 
   const login = useCallback(async (username: string, password: string, totpCode?: string) => {

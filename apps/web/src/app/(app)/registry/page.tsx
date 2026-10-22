@@ -6,6 +6,7 @@ import { api } from '@/lib/api';
 import { useToast } from '@/components/Toast';
 import { useAuth } from '@/components/AuthProvider';
 import { useLiveRefresh } from '@/lib/live-refresh';
+import { enumLabel } from '@/lib/i18n';
 
 type Dak = {
   id: string;
@@ -26,7 +27,7 @@ type Dak = {
 };
 
 export default function RegistryPage() {
-  const { label } = useAuth();
+  const { lang, label } = useAuth();
   const toast = useToast();
   const [items, setItems] = useState<Dak[]>([]);
   const [filter, setFilter] = useState<'ALL' | 'IN' | 'OUT'>('ALL');
@@ -78,11 +79,11 @@ export default function RegistryPage() {
           },
         });
       }
-      toast.success('Dak stamped');
+      toast.success(label('registry_stamped'));
       setForm({ ...form, fromName: '', toName: '', subject: '' });
       await load();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed');
+      toast.error(err instanceof Error ? err.message : label('cm_failed'));
     } finally {
       setBusy(false);
     }
@@ -92,12 +93,9 @@ export default function RegistryPage() {
     <>
       <div className="overview-hero">
         <div>
-          <div className="eyebrow">R&amp;I · RECEIPT &amp; ISSUE</div>
-          <h1>{label('registry') === 'registry' ? 'Dak register' : label('registry')}</h1>
-          <p className="muted">
-            Diarise incoming and outgoing dak with Received/Despatched stamp fields (branch, from,
-            by, date/time, channel) — aligned to National Assembly R&amp;I practice.
-          </p>
+          <div className="eyebrow">{label('rg_eyebrow')}</div>
+          <h1>{label('registry')}</h1>
+          <p className="muted">{label('rg_heroBody')}</p>
         </div>
       </div>
 
@@ -109,44 +107,48 @@ export default function RegistryPage() {
             className={filter === f ? 'active' : ''}
             onClick={() => setFilter(f)}
           >
-            {f === 'ALL' ? 'All entries' : f === 'IN' ? 'Received (IN)' : 'Despatched (OUT)'}
+            {f === 'ALL'
+              ? label('rg_all')
+              : f === 'IN'
+                ? label('registry_filterIn')
+                : label('registry_filterOut')}
           </button>
         ))}
       </div>
 
       <div className="panel">
-        <h2>Stamp dak</h2>
+        <h2>{label('registry_stamp')}</h2>
         <form className="grid-form" onSubmit={submit}>
           <div className="field">
-            <label>Direction</label>
+            <label>{label('registry_direction')}</label>
             <select
               value={form.direction}
               onChange={(e) => setForm({ ...form, direction: e.target.value as 'IN' | 'OUT' })}
             >
-              <option value="IN">IN — Received</option>
-              <option value="OUT">OUT — Despatched</option>
+              <option value="IN">{enumLabel(lang, 'IN')}</option>
+              <option value="OUT">{enumLabel(lang, 'OUT')}</option>
             </select>
           </div>
           <div className="field">
-            <label>From</label>
+            <label>{label('from')}</label>
             <input
               value={form.fromName}
               onChange={(e) => setForm({ ...form, fromName: e.target.value })}
               required={form.direction === 'IN'}
-              placeholder="Name / office"
+              placeholder={label('rg_namePh')}
             />
           </div>
           <div className="field">
-            <label>To</label>
+            <label>{label('to')}</label>
             <input
               value={form.toName}
               onChange={(e) => setForm({ ...form, toName: e.target.value })}
               required={form.direction === 'OUT'}
-              placeholder="Name / office"
+              placeholder={label('rg_namePh')}
             />
           </div>
           <div className="field">
-            <label>Subject</label>
+            <label>{label('subject')}</label>
             <input
               value={form.subject}
               onChange={(e) => setForm({ ...form, subject: e.target.value })}
@@ -155,31 +157,31 @@ export default function RegistryPage() {
           </div>
           <div className="row">
             <div className="field" style={{ flex: 1 }}>
-              <label>Channel</label>
+              <label>{label('registry_channel')}</label>
               <select
                 value={form.channel}
                 onChange={(e) => setForm({ ...form, channel: e.target.value })}
               >
-                <option value="HAND">Hand</option>
-                <option value="POST">Post</option>
-                <option value="EMAIL">Email</option>
-                <option value="INTERNAL">Internal</option>
+                <option value="HAND">{enumLabel(lang, 'HAND')}</option>
+                <option value="POST">{enumLabel(lang, 'POST')}</option>
+                <option value="EMAIL">{enumLabel(lang, 'EMAIL')}</option>
+                <option value="INTERNAL">{enumLabel(lang, 'INTERNAL')}</option>
               </select>
             </div>
             <div className="field" style={{ flex: 1 }}>
-              <label>Classification</label>
+              <label>{label('classification')}</label>
               <select
                 value={form.classification}
                 onChange={(e) => setForm({ ...form, classification: e.target.value })}
               >
-                <option value="PUBLIC">Public</option>
-                <option value="INTERNAL">Internal</option>
-                <option value="CONFIDENTIAL">Confidential</option>
+                <option value="PUBLIC">{enumLabel(lang, 'PUBLIC')}</option>
+                <option value="INTERNAL">{enumLabel(lang, 'INTERNAL')}</option>
+                <option value="CONFIDENTIAL">{enumLabel(lang, 'CONFIDENTIAL')}</option>
               </select>
             </div>
           </div>
           <button className="btn primary" type="submit" disabled={busy}>
-            Affix stamp
+            {label('rg_affix')}
           </button>
         </form>
       </div>
@@ -189,12 +191,12 @@ export default function RegistryPage() {
           <table className="table files-table">
             <thead>
               <tr>
-                <th>Dir</th>
-                <th>Stamp</th>
-                <th>From → To</th>
-                <th>Subject</th>
-                <th>Channel</th>
-                <th>Diary / ref</th>
+                <th>{label('rg_thDir')}</th>
+                <th>{label('rg_thStamp')}</th>
+                <th>{label('rg_thFromTo')}</th>
+                <th>{label('subject')}</th>
+                <th>{label('registry_channel')}</th>
+                <th>{label('rg_thDiaryRef')}</th>
               </tr>
             </thead>
             <tbody>
@@ -202,7 +204,11 @@ export default function RegistryPage() {
                 <tr key={d.id}>
                   <td>
                     <span className={`badge ${d.direction === 'IN' ? 'APPROVED' : 'AWAITING_DECISION'}`}>
-                      {d.direction}
+                      {d.direction === 'IN'
+                        ? label('rg_dirIn')
+                        : d.direction === 'OUT'
+                          ? label('rg_dirOut')
+                          : d.direction}
                     </span>
                   </td>
                   <td>
@@ -213,7 +219,7 @@ export default function RegistryPage() {
                     {d.fromName} → {d.toName}
                   </td>
                   <td>{d.subject}</td>
-                  <td>{d.channel}</td>
+                  <td>{enumLabel(lang, d.channel)}</td>
                   <td>
                     {d.matter ? (
                       <Link href={`/files/${d.matter.id}`}>{d.matter.diaryNo}</Link>
@@ -226,7 +232,7 @@ export default function RegistryPage() {
               {!items.length && (
                 <tr>
                   <td colSpan={6} className="muted">
-                    No dak entries yet — register a matter or stamp manually.
+                    {label('rg_emptyFull')}
                   </td>
                 </tr>
               )}

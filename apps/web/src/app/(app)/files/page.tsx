@@ -3,9 +3,9 @@
 import Link from 'next/link';
 import { FormEvent, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { ROLE_META, type Role } from '@gow/shared';
 import { api } from '@/lib/api';
 import { useAuth } from '@/components/AuthProvider';
+import { enumLabel, roleTitle } from '@/lib/i18n';
 import { useToast } from '@/components/Toast';
 import { roleAvatar } from '@/lib/avatars';
 import { useLiveRefresh } from '@/lib/live-refresh';
@@ -37,21 +37,10 @@ type Letter = {
 
 type Tab = 'active' | 'archive' | 'all';
 
-function prettyLabel(s: string) {
-  return s
-    .replace(/_/g, ' ')
-    .toLowerCase()
-    .replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
-function roleTitle(role?: string) {
-  if (!role) return '';
-  return ROLE_META[role as Role]?.title || role.replace(/_/g, ' ');
-}
-
 function HolderCell({ m }: { m: Matter }) {
-  const name = m.holder?.displayName || 'Unassigned';
-  const title = roleTitle(m.holder?.role);
+  const { lang, label } = useAuth();
+  const name = m.holder?.displayName || label('unassigned');
+  const title = roleTitle(lang, m.holder?.role);
   const src = roleAvatar(m.holder?.role);
   return (
     <div className="holder-cell">
@@ -70,7 +59,7 @@ function HolderCell({ m }: { m: Matter }) {
 }
 
 function FilesPageInner() {
-  const { user } = useAuth();
+  const { user, lang, label } = useAuth();
   const toast = useToast();
   const search = useSearchParams();
   const [matters, setMatters] = useState<Matter[]>([]);
@@ -142,10 +131,10 @@ function FilesPageInner() {
       await api('/files', { method: 'POST', json: payload });
       setForm({ ...form, subject: '', sender: '', body: '', filePassword: '' });
       setShowForm(false);
-      toast.success('Matter registered');
+      toast.success(label('files_registered'));
       await load();
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed';
+      const msg = err instanceof Error ? err.message : label('cm_failed');
       setError(msg);
       toast.error(msg);
     }
@@ -158,12 +147,12 @@ function FilesPageInner() {
         method: 'POST',
         json: { password: filePassword },
       });
-      toast.success('Vault unlocked');
+      toast.success(label('files_unlocked'));
       setUnlockId(null);
       setFilePassword('');
       await load();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Unlock failed');
+      toast.error(err instanceof Error ? err.message : label('cm_unlockFailed'));
     }
   }
 
@@ -172,65 +161,64 @@ function FilesPageInner() {
       <div className="overview-hero">
         <div>
           <div className="eyebrow">
-            {user?.role === 'SPEAKER' ? "SPEAKER'S OFFICE" : 'OFFICE WORKFLOW'} · CONCEPT DEMO
+            {user?.role === 'SPEAKER' ? label('cm_speakerOffice') : label('cm_officeWorkflow')} ·{' '}
+            {label('cm_conceptDemo')}
           </div>
-          <h1>Files & documents</h1>
-          <p className="muted">
-            Receive, review and track every official matter from intake to closure.
-          </p>
+          <h1>{label('files')}</h1>
+          <p className="muted">{label('fl_heroSub')}</p>
         </div>
         <button type="button" className="btn primary" onClick={() => setShowForm((v) => !v)}>
-          {showForm ? 'Close form' : '+ Register new matter'}
+          {showForm ? label('fl_closeForm') : label('files_registerNew')}
         </button>
       </div>
 
       {showForm && (
         <div className="panel">
-          <h2>Register new matter</h2>
+          <h2>{label('fl_registerTitle')}</h2>
           <form className="grid-form" onSubmit={register}>
             <div className="field">
-              <label>Subject</label>
+              <label>{label('subject')}</label>
               <input value={form.subject} onChange={(e) => setForm({ ...form, subject: e.target.value })} required />
             </div>
             <div className="field">
-              <label>Sender</label>
+              <label>{label('files_sender')}</label>
               <input value={form.sender} onChange={(e) => setForm({ ...form, sender: e.target.value })} required />
             </div>
             <div className="field">
-              <label>Body</label>
+              <label>{label('fl_body')}</label>
               <textarea rows={4} value={form.body} onChange={(e) => setForm({ ...form, body: e.target.value })} required />
             </div>
             <div className="row">
               <div className="field" style={{ flex: 1 }}>
-                <label>Classification</label>
+                <label>{label('classification')}</label>
                 <select value={form.classification} onChange={(e) => setForm({ ...form, classification: e.target.value })}>
-                  <option value="PUBLIC">Public</option>
-                  <option value="INTERNAL">Internal</option>
-                  <option value="CONFIDENTIAL">Confidential</option>
+                  <option value="PUBLIC">{enumLabel(lang, 'PUBLIC')}</option>
+                  <option value="INTERNAL">{enumLabel(lang, 'INTERNAL')}</option>
+                  <option value="CONFIDENTIAL">{enumLabel(lang, 'CONFIDENTIAL')}</option>
                 </select>
               </div>
               <div className="field" style={{ flex: 1 }}>
-                <label>Subject area</label>
+                <label>{label('files_area')}</label>
                 <select value={form.subjectArea} onChange={(e) => setForm({ ...form, subjectArea: e.target.value })}>
-                  <option>Parliamentary business</option>
-                  <option>Administration</option>
-                  <option>Protocol</option>
-                  <option>Intergovernmental</option>
-                  <option>Public engagement</option>
-                  <option>Other</option>
+                  <option value="Parliamentary business">{label('fl_areaParliamentary')}</option>
+                  <option value="Administration">{label('fl_areaAdministration')}</option>
+                  <option value="Protocol">{label('fl_areaProtocol')}</option>
+                  <option value="Intergovernmental">{label('fl_areaIntergovernmental')}</option>
+                  <option value="Public engagement">{label('fl_areaPublic')}</option>
+                  <option value="Other">{label('fl_areaOther')}</option>
                 </select>
               </div>
               <div className="field" style={{ flex: 1 }}>
-                <label>Priority</label>
+                <label>{label('priority')}</label>
                 <select value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value })}>
-                  <option value="NORMAL">Normal</option>
-                  <option value="URGENT">Urgent</option>
+                  <option value="NORMAL">{enumLabel(lang, 'NORMAL')}</option>
+                  <option value="URGENT">{enumLabel(lang, 'URGENT')}</option>
                 </select>
               </div>
             </div>
             {form.classification === 'CONFIDENTIAL' && (
               <div className="field">
-                <label>File password (min 12)</label>
+                <label>{label('fl_passwordMin')}</label>
                 <input
                   type="password"
                   value={form.filePassword}
@@ -242,7 +230,7 @@ function FilesPageInner() {
             )}
             {error && <div className="error">{error}</div>}
             <button className="btn primary" type="submit">
-              Register
+              {label('fl_registerBtn')}
             </button>
           </form>
         </div>
@@ -253,43 +241,43 @@ function FilesPageInner() {
           <span className="files-stat-icon gold">📁</span>
           <div>
             <div className="files-stat-value">{counts.open}</div>
-            <div className="files-stat-label">Open matters</div>
-            <div className="muted">In active workflow</div>
+            <div className="files-stat-label">{label('fl_openMatters')}</div>
+            <div className="muted">{label('fl_inWorkflow')}</div>
           </div>
         </div>
         <div className="files-stat">
           <span className="files-stat-icon sand">⏳</span>
           <div>
             <div className="files-stat-value">{counts.awaiting}</div>
-            <div className="files-stat-label">Awaiting receipt</div>
-            <div className="muted">Pending handoff</div>
+            <div className="files-stat-label">{label('files_kpiAwaiting')}</div>
+            <div className="muted">{label('fl_pendingHandoff')}</div>
           </div>
         </div>
         <div className="files-stat">
           <span className="files-stat-icon plum">📄</span>
           <div>
             <div className="files-stat-value">{counts.closed}</div>
-            <div className="files-stat-label">Closed matters</div>
-            <div className="muted">Archived & sealed</div>
+            <div className="files-stat-label">{label('overview_mattersClosed')}</div>
+            <div className="muted">{label('files_sealed')}</div>
           </div>
         </div>
       </div>
 
       <div className="files-pill-tabs">
         <button type="button" className={tab === 'active' ? 'active' : ''} onClick={() => setTab('active')}>
-          Active files · {counts.open}
+          {label('fl_tabActive')} · {counts.open}
         </button>
         <button type="button" className={tab === 'archive' ? 'active' : ''} onClick={() => setTab('archive')}>
-          Archive · closed · {counts.closed}
+          {label('fl_tabArchive')} · {counts.closed}
         </button>
         <button type="button" className={tab === 'all' ? 'active' : ''} onClick={() => setTab('all')}>
-          All files · {counts.all}
+          {label('fl_tabAll')} · {counts.all}
         </button>
         <input
           className="files-search"
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="Search diary, matter, sender…"
+          placeholder={label('fl_searchPh')}
         />
       </div>
 
@@ -298,11 +286,11 @@ function FilesPageInner() {
           <table className="table files-table">
             <thead>
               <tr>
-                <th>Diary / matter</th>
-                <th>Sender</th>
-                <th>Classification</th>
-                <th>Status</th>
-                <th>Current holder</th>
+                <th>{label('fl_thDiaryMatter')}</th>
+                <th>{label('files_sender')}</th>
+                <th>{label('classification')}</th>
+                <th>{label('status')}</th>
+                <th>{label('fl_thHolder')}</th>
                 <th />
               </tr>
             </thead>
@@ -317,7 +305,7 @@ function FilesPageInner() {
                         <>
                           <strong>{m.diaryNo}</strong>
                           <div className="muted">
-                            Confidential
+                            {enumLabel(lang, 'CONFIDENTIAL')}
                             {m.subjectArea ? ` · ${m.subjectArea}` : ''}
                           </div>
                         </>
@@ -334,7 +322,7 @@ function FilesPageInner() {
                         <form className="unlock-inline" onSubmit={(e) => unlock(e, m.id)}>
                           <input
                             type="password"
-                            placeholder="File password"
+                            placeholder={label('cm_filePassword')}
                             value={filePassword}
                             onChange={(e) => setFilePassword(e.target.value)}
                             minLength={12}
@@ -342,7 +330,7 @@ function FilesPageInner() {
                             autoFocus
                           />
                           <button className="btn primary" type="submit">
-                            Unlock
+                            {label('files_unlock')}
                           </button>
                           <button
                             type="button"
@@ -352,17 +340,17 @@ function FilesPageInner() {
                               setFilePassword('');
                             }}
                           >
-                            Cancel
+                            {label('cancel')}
                           </button>
                         </form>
                       )}
                     </td>
                     <td>{m.sender}</td>
                     <td>
-                      <span className={`badge ${m.classification}`}>{prettyLabel(m.classification)}</span>
+                      <span className={`badge ${m.classification}`}>{enumLabel(lang, m.classification)}</span>
                     </td>
                     <td>
-                      <span className={`badge ${m.status}`}>{prettyLabel(m.status)}</span>
+                      <span className={`badge ${m.status}`}>{enumLabel(lang, m.status)}</span>
                     </td>
                     <td>
                       <HolderCell m={m} />
@@ -378,15 +366,15 @@ function FilesPageInner() {
                               setFilePassword('');
                             }}
                           >
-                            🔑 Enter password
+                            {label('cm_enterPassword')}
                           </button>
                         ) : (
                           <>
                             <Link className="btn" href={`/files/${m.id}`}>
-                              Open
+                              {label('open')}
                             </Link>
                             <Link className="btn" href={`/files/${m.id}?tab=journey`}>
-                              Journey
+                              {label('fl_journey')}
                             </Link>
                           </>
                         )}
@@ -398,7 +386,7 @@ function FilesPageInner() {
               {!filtered.length && (
                 <tr>
                   <td colSpan={6} className="muted">
-                    No files in this view — register a matter to begin.
+                    {label('fl_emptyView')}
                   </td>
                 </tr>
               )}
@@ -408,17 +396,17 @@ function FilesPageInner() {
       </div>
 
       <div className="panel" style={{ marginTop: 16 }}>
-        <div className="eyebrow">Official register</div>
-        <h2 style={{ marginTop: 4 }}>Dispatched correspondence</h2>
+        <div className="eyebrow">{label('fl_officialRegister')}</div>
+        <h2 style={{ marginTop: 4 }}>{label('fl_dispatchedTitle')}</h2>
         {letters.length === 0 ? (
-          <p className="muted">No correspondence dispatched yet.</p>
+          <p className="muted">{label('fl_noDispatched')}</p>
         ) : (
           <ul className="timeline">
             {letters.map((l) => (
               <li key={l.id}>
                 <strong>{l.recipient}</strong>
                 <div className="muted">
-                  {l.matter?.diaryNo || 'Letter'}
+                  {l.matter?.diaryNo || label('fl_letter')}
                   {l.reference ? ` · ${l.reference}` : ''} · {new Date(l.updatedAt).toLocaleString()}
                 </div>
                 <div>
@@ -427,7 +415,7 @@ function FilesPageInner() {
                 </div>
                 {l.matter && (
                   <Link className="tiny-link" href={`/files/${l.matter.id}`}>
-                    Open matter →
+                    {label('fl_openMatterArrow')}
                   </Link>
                 )}
               </li>
@@ -439,9 +427,14 @@ function FilesPageInner() {
   );
 }
 
+function FilesFallback() {
+  const { label } = useAuth();
+  return <p className="muted">{label('fl_loading')}</p>;
+}
+
 export default function FilesPage() {
   return (
-    <Suspense fallback={<p className="muted">Loading files…</p>}>
+    <Suspense fallback={<FilesFallback />}>
       <FilesPageInner />
     </Suspense>
   );

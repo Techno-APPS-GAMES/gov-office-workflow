@@ -6,6 +6,7 @@ import { Role, ROLE_META } from '@gow/shared';
 import { AuthProvider, useAuth } from '@/components/AuthProvider';
 import { api } from '@/lib/api';
 import { roleAvatar } from '@/lib/avatars';
+import { roleBlurb, roleTitle } from '@/lib/i18n';
 
 const PICKABLE: Role[] = [
   Role.SPEAKER,
@@ -15,7 +16,7 @@ const PICKABLE: Role[] = [
 ];
 
 function LoginForm() {
-  const { login, label, user, refreshMe } = useAuth();
+  const { login, label, lang, user, refreshMe } = useAuth();
   const router = useRouter();
   const [role, setRole] = useState<Role>(Role.SPEAKER);
   const [username, setUsername] = useState(ROLE_META[Role.SPEAKER].usernameHint);
@@ -49,7 +50,7 @@ function LoginForm() {
         router.replace('/overview');
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Login failed');
+      setError(err instanceof Error ? err.message : label('loginFailed'));
     } finally {
       setBusy(false);
     }
@@ -65,7 +66,7 @@ function LoginForm() {
       setMfaQr(null);
       router.replace('/overview');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'MFA failed');
+      setError(err instanceof Error ? err.message : label('mfaFailed'));
     } finally {
       setBusy(false);
     }
@@ -82,24 +83,26 @@ function LoginForm() {
           <p>{label('tagline')}</p>
         </div>
         <div className="login-foot">
-          Private on-prem deployment · Real accounts
-          {process.env.NEXT_PUBLIC_MFA_REQUIRED !== 'false' ? ' · MFA required' : ' · MFA off (testing)'}
+          {label('loginFoot')}
+          {process.env.NEXT_PUBLIC_MFA_REQUIRED !== 'false'
+            ? label('loginFootMfaOn')
+            : label('loginFootMfaOff')}
         </div>
       </section>
       <section className="login-right">
         <div className="login-box">
           {mfaQr ? (
             <form className="grid-form" onSubmit={confirmMfa}>
-              <h2>Enable authenticator</h2>
-              <p>Scan this QR, then enter a 6-digit code to finish MFA enrollment.</p>
+              <h2>{label('mfaEnableTitle')}</h2>
+              <p>{label('mfaEnableHelp')}</p>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={mfaQr} alt="MFA QR" style={{ width: 200, margin: '0 auto', display: 'block' }} />
               <div className="field">
-                <label>Confirmation code</label>
+                <label>{label('mfaConfirmCode')}</label>
                 <input value={mfaCode} onChange={(e) => setMfaCode(e.target.value)} maxLength={6} required />
               </div>
               {error && <div className="error">{error}</div>}
-              <button className="btn primary" type="submit" disabled={busy}>Confirm MFA</button>
+              <button className="btn primary" type="submit" disabled={busy}>{label('mfaConfirm')}</button>
             </form>
           ) : (
             <form onSubmit={onSubmit}>
@@ -108,6 +111,8 @@ function LoginForm() {
               <div className="role-grid">
                 {PICKABLE.map((r) => {
                   const meta = ROLE_META[r];
+                  const title = roleTitle(lang, r);
+                  const blurb = roleBlurb(lang, r);
                   return (
                     <button
                       key={r}
@@ -119,12 +124,12 @@ function LoginForm() {
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src={roleAvatar(r) || ''}
-                        alt={meta.title}
+                        alt={title}
                         className="role-option-avatar"
                       />
                       <span className="role-option-body">
-                        <strong>{meta.title}</strong>
-                        <span>{meta.blurb}</span>
+                        <strong>{title}</strong>
+                        <span>{blurb || meta.blurb}</span>
                       </span>
                     </button>
                   );

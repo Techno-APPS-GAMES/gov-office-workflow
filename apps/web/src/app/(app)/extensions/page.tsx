@@ -6,6 +6,7 @@ import { api } from '@/lib/api';
 import { useAuth } from '@/components/AuthProvider';
 import { useToast } from '@/components/Toast';
 import { useLiveRefresh, notifyDataChanged } from '@/lib/live-refresh';
+import { Lang, enumLabel } from '@/lib/i18n';
 
 type Category =
   | 'parliamentary'
@@ -121,9 +122,25 @@ function statusClass(s: string) {
   return 'draft';
 }
 
-function fmtDate(iso: string) {
+function statusText(s: string, label: (k: string) => string, lang: Lang) {
+  if (s === 'SUBMITTED') return label('enum_SUBMITTED');
+  if (s === 'APPROVED' || s === 'DISPATCHED' || s === 'CLOSED' || s === 'COMPLETED') return label('approved');
+  if (s === 'REJECTED' || s === 'DECLINED') return label('rejected');
+  if (s === 'FOLLOW_UP') return label('ext_followUp');
+  if (s === 'LOGGED') return label('ext_logged');
+  if (s === 'DRAFT' || s === 'REQUESTED' || s === 'PLANNED') return label('draft');
+  return enumLabel(lang, s);
+}
+
+function kindText(kind: string, label: (k: string) => string) {
+  const k = `ext_kind_${(kind || '').toUpperCase()}`;
+  const v = label(k);
+  return v === k ? kind : v;
+}
+
+function fmtDate(iso: string, locale?: string) {
   const d = new Date(iso);
-  return d.toLocaleDateString(undefined, { day: '2-digit', month: '2-digit', year: 'numeric' });
+  return d.toLocaleDateString(locale, { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
 function iconFor(cat: Category) {
@@ -135,7 +152,8 @@ function iconFor(cat: Category) {
 }
 
 export default function ExtensionsPage() {
-  const { user } = useAuth();
+  const { user, label, lang } = useAuth();
+  const locale = lang === 'ur' ? 'ur-PK' : undefined;
   const toast = useToast();
   const [focusId, setFocusId] = useState<string | null>(null);
 
@@ -176,7 +194,7 @@ export default function ExtensionsPage() {
         source: 'work',
         category: mapKind(w.kind),
         title: w.title,
-        subtitle: `${w.code || 'WR'} · ${w.kind} · ${w.owner?.displayName || 'Office'} · ${
+        subtitle: `${w.code || 'WR'} · ${kindText(w.kind, label)} · ${w.owner?.displayName || label('ext_office')} · ${
           w.language || 'en'
         }${w.matter?.diaryNo ? ` · ${w.matter.diaryNo}` : ''}`,
         status: w.status,
@@ -192,7 +210,7 @@ export default function ExtensionsPage() {
         source: 'speech',
         category: 'briefs',
         title: s.title,
-        subtitle: `Speech · ${s.language || 'en'}${s.matter?.diaryNo ? ` · ${s.matter.diaryNo}` : ''}`,
+        subtitle: `${label('ext_src_speech')} · ${s.language || 'en'}${s.matter?.diaryNo ? ` · ${s.matter.diaryNo}` : ''}`,
         status: s.status || 'DRAFT',
         createdAt: s.createdAt || s.updatedAt,
         href: `/speeches?focus=${s.id}`,
@@ -205,7 +223,7 @@ export default function ExtensionsPage() {
         source: 'press',
         category: 'media',
         title: p.title,
-        subtitle: `Press · ${p.author?.displayName || 'Office'}`,
+        subtitle: `${label('ext_src_press')} · ${p.author?.displayName || label('ext_office')}`,
         status: p.status || 'DRAFT',
         createdAt: p.createdAt || p.updatedAt,
         href: `/press?focus=${p.id}`,
@@ -217,8 +235,8 @@ export default function ExtensionsPage() {
         id: g.id,
         source: 'greeting',
         category: 'correspondence',
-        title: g.occasion || g.recipient || 'Greeting',
-        subtitle: `Greeting · ${g.cardCode || g.recipient || ''}`,
+        title: g.occasion || g.recipient || label('ext_src_greeting'),
+        subtitle: `${label('ext_src_greeting')} · ${g.cardCode || g.recipient || ''}`,
         status: g.status || 'DRAFT',
         createdAt: g.createdAt || g.updatedAt,
         href: `/greetings?focus=${g.id}`,
@@ -230,8 +248,8 @@ export default function ExtensionsPage() {
         id: c.id,
         source: 'call',
         category: 'correspondence',
-        title: c.summary || c.partyName || 'Call log',
-        subtitle: `Call · ${c.partyName || ''}${c.organisation ? ` · ${c.organisation}` : ''}`,
+        title: c.summary || c.partyName || label('ext_callLog'),
+        subtitle: `${label('ext_src_call')} · ${c.partyName || ''}${c.organisation ? ` · ${c.organisation}` : ''}`,
         status: c.status || 'LOGGED',
         createdAt: c.createdAt,
         href: `/calls?focus=${c.id}`,
@@ -245,8 +263,8 @@ export default function ExtensionsPage() {
         id: 'scaffold-questions',
         source: 'scaffold',
         category: 'legislative',
-        title: 'Questions database (Tier C)',
-        subtitle: 'Pilot: file a LEGISLATIVE / QUESTION work note linked to a matter',
+        title: label('ext_scaffoldQ'),
+        subtitle: label('ext_scaffoldQSub'),
         status: 'PLANNED',
         createdAt: new Date(0).toISOString(),
       });
@@ -254,8 +272,8 @@ export default function ExtensionsPage() {
         id: 'scaffold-hansard',
         source: 'scaffold',
         category: 'legislative',
-        title: 'Hansard / bill track (Tier C)',
-        subtitle: 'Out of scope for this pilot — use LEGISLATIVE research notes meanwhile',
+        title: label('ext_scaffoldH'),
+        subtitle: label('ext_scaffoldHSub'),
         status: 'PLANNED',
         createdAt: new Date(0).toISOString(),
       });
@@ -263,7 +281,7 @@ export default function ExtensionsPage() {
 
     next.sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt));
     setRows(next);
-  }, []);
+  }, [label]);
 
   useLiveRefresh(load, []);
 
@@ -337,13 +355,13 @@ export default function ExtensionsPage() {
           dueAt: form.dueAt || undefined,
         },
       });
-      toast.success('Work record drafted');
+      toast.success(label('ext_toastDrafted'));
       setForm(emptyForm);
       setShowForm(false);
       notifyDataChanged();
       await load();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Create failed');
+      toast.error(err instanceof Error ? err.message : label('createFailed'));
     } finally {
       setBusy(false);
     }
@@ -358,11 +376,11 @@ export default function ExtensionsPage() {
         json: { text: editText, title: openWork.title },
       });
       setOpenWork(updated);
-      toast.success('Draft saved');
+      toast.success(label('ext_toastDraftSaved'));
       notifyDataChanged();
       await load();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Save failed');
+      toast.error(err instanceof Error ? err.message : label('saveFailed'));
     } finally {
       setBusy(false);
     }
@@ -375,18 +393,18 @@ export default function ExtensionsPage() {
     try {
       if (action === 'submit') {
         await api(`/work-items/${row.id}/submit`, { method: 'POST' });
-        toast.success('Submitted for approval');
+        toast.success(label('ext_toastSubmitted'));
       } else if (action === 'approve') {
         await api(`/work-items/${row.id}/decide`, {
           method: 'POST',
           json: { approve: true, note: decisionNote.trim() || undefined },
         });
-        toast.success('Approved');
+        toast.success(label('toast_approved'));
         setDecisionNote('');
       } else {
         const reason = rejectReason.trim() || 'Returned for revision';
         if (reason.length < 5) {
-          toast.error('Reject reason required (min 5 characters)');
+          toast.error(label('ext_toastReasonReq'));
           setBusy(false);
           return;
         }
@@ -394,14 +412,14 @@ export default function ExtensionsPage() {
           method: 'POST',
           json: { approve: false, reason },
         });
-        toast.success('Rejected');
+        toast.success(label('toast_rejected'));
         setRejectReason('');
       }
       notifyDataChanged();
       await load();
       if (openWork?.id === row.id) setOpenWork(null);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Action failed');
+      toast.error(err instanceof Error ? err.message : label('mtg_actionFailed'));
     } finally {
       setBusy(false);
     }
@@ -421,35 +439,35 @@ export default function ExtensionsPage() {
       <div className="overview-hero">
         <div>
           <div className="eyebrow">
-            {user?.role === 'SPEAKER' ? "SPEAKER'S OFFICE" : 'OFFICE WORKFLOW'} · WORK REGISTER
+            {user?.role === 'SPEAKER' ? label('hero_speakerOffice') : label('hero_officeWorkflow')} ·{' '}
+            {label('ext_eyebrowRegister')}
           </div>
-          <h1>Work records</h1>
+          <h1>{label('extensions')}</h1>
           <p className="muted">
-            Hub for office work items plus deep links into speeches, press, greetings and call logs.
-            Questions / Hansard remain Tier C scaffolds under Legislative record.
+            {label('ext_heroSub')}
           </p>
         </div>
         <button type="button" className="btn primary" onClick={() => setShowForm((v) => !v)}>
-          {showForm ? 'Close form' : '+ New work record'}
+          {showForm ? label('mtg_closeForm') : label('extensions_new')}
         </button>
       </div>
 
       <div className="work-kpi-row">
         <div className="work-kpi">
           <strong>{kpis.total}</strong>
-          <span className="muted">In register</span>
+          <span className="muted">{label('ext_kpiRegister')}</span>
         </div>
         <div className="work-kpi">
           <strong>{kpis.awaiting}</strong>
-          <span className="muted">Awaiting approval</span>
+          <span className="muted">{label('spc_awaitingApproval')}</span>
         </div>
         <div className="work-kpi">
           <strong>{kpis.drafts}</strong>
-          <span className="muted">Work drafts</span>
+          <span className="muted">{label('ext_kpiDrafts')}</span>
         </div>
         <div className="work-kpi">
           <strong>{kpis.modules}</strong>
-          <span className="muted">Sibling modules</span>
+          <span className="muted">{label('ext_kpiModules')}</span>
         </div>
       </div>
 
@@ -461,17 +479,17 @@ export default function ExtensionsPage() {
             className={filter === f.key ? 'active' : ''}
             onClick={() => setFilter(f.key)}
           >
-            {f.label}
+            {f.key === 'all' ? label('all') : label(`ext_cat_${f.key}`)}
           </button>
         ))}
       </div>
 
       {showForm ? (
         <div className="panel">
-          <h2>Draft a work record</h2>
+          <h2>{label('ext_draftTitle')}</h2>
           <form className="grid-form" onSubmit={create}>
             <label>
-              Title
+              {label('title')}
               <input
                 value={form.title}
                 onChange={(e) => setForm({ ...form, title: e.target.value })}
@@ -480,58 +498,58 @@ export default function ExtensionsPage() {
               />
             </label>
             <label>
-              Category
+              {label('ext_category')}
               <select
                 value={form.kind}
                 onChange={(e) => setForm({ ...form, kind: e.target.value })}
               >
                 {KIND_OPTIONS.map((k) => (
                   <option key={k.value} value={k.value}>
-                    {k.label}
+                    {label(`ext_kind_${k.value}`)}
                   </option>
                 ))}
               </select>
             </label>
             <label>
-              Language
+              {label('files_language')}
               <select
                 value={form.language}
                 onChange={(e) => setForm({ ...form, language: e.target.value })}
               >
-                <option value="en">English</option>
-                <option value="ur">Urdu</option>
+                <option value="en">{label('files_english')}</option>
+                <option value="ur">{label('files_urdu')}</option>
               </select>
             </label>
             <label>
-              Priority
+              {label('priority')}
               <select
                 value={form.priority}
                 onChange={(e) => setForm({ ...form, priority: e.target.value })}
               >
-                <option value="NORMAL">Normal</option>
-                <option value="PRIORITY">Priority</option>
-                <option value="URGENT">Urgent</option>
-                <option value="VIP">VIP</option>
+                <option value="NORMAL">{label('enum_NORMAL')}</option>
+                <option value="PRIORITY">{label('enum_PRIORITY')}</option>
+                <option value="URGENT">{label('enum_URGENT')}</option>
+                <option value="VIP">{label('enum_VIP')}</option>
               </select>
             </label>
             <label>
-              Classification
+              {label('classification')}
               <select
                 value={form.classification}
                 onChange={(e) => setForm({ ...form, classification: e.target.value })}
               >
-                <option value="PUBLIC">Public</option>
-                <option value="INTERNAL">Internal</option>
-                <option value="CONFIDENTIAL">Confidential</option>
+                <option value="PUBLIC">{label('enum_PUBLIC')}</option>
+                <option value="INTERNAL">{label('enum_INTERNAL')}</option>
+                <option value="CONFIDENTIAL">{label('enum_CONFIDENTIAL')}</option>
               </select>
             </label>
             <label>
-              Linked matter (optional)
+              {label('ext_linkedMatterOpt')}
               <select
                 value={form.matterId}
                 onChange={(e) => setForm({ ...form, matterId: e.target.value })}
               >
-                <option value="">None</option>
+                <option value="">{label('none')}</option>
                 {matters.map((m) => (
                   <option key={m.id} value={m.id}>
                     {m.diaryNo} — {m.subject}
@@ -540,7 +558,7 @@ export default function ExtensionsPage() {
               </select>
             </label>
             <label>
-              Due date (optional)
+              {label('ext_dueOpt')}
               <input
                 type="date"
                 value={form.dueAt}
@@ -548,7 +566,7 @@ export default function ExtensionsPage() {
               />
             </label>
             <label>
-              Text
+              {label('ext_text')}
               <textarea
                 rows={4}
                 value={form.text}
@@ -558,7 +576,7 @@ export default function ExtensionsPage() {
               />
             </label>
             <button type="submit" className="btn primary" disabled={busy}>
-              Save draft
+              {label('prs_saveDraft')}
             </button>
           </form>
         </div>
@@ -566,12 +584,13 @@ export default function ExtensionsPage() {
 
       {openWork ? (
         <div className="panel remote-preview-panel">
-          <div className="eyebrow">Work record detail</div>
+          <div className="eyebrow">{label('ext_detail')}</div>
           <h2>
             {openWork.code || 'WR'} · {openWork.title}
           </h2>
           <p className="muted">
-            {openWork.kind} · {prettyStatus(openWork.status)} · {openWork.priority || 'NORMAL'}
+            {kindText(openWork.kind, label)} · {statusText(openWork.status, label, lang)} ·{' '}
+            {enumLabel(lang, openWork.priority || 'NORMAL')}
             {openWork.matter ? (
               <>
                 {' '}
@@ -581,32 +600,32 @@ export default function ExtensionsPage() {
           </p>
           {openWork.rejectReason ? (
             <p className="tiny" style={{ color: 'var(--danger, #a33)' }}>
-              Rejected: {openWork.rejectReason}
+              {label('rejected')}: {openWork.rejectReason}
             </p>
           ) : null}
           {openWork.status === 'DRAFT' || openWork.status === 'REJECTED' ? (
             <label className="field">
-              Body
+              {label('ext_body')}
               <textarea rows={6} value={editText} onChange={(e) => setEditText(e.target.value)} />
             </label>
           ) : (
             <div className="remote-decision-box">
-              <strong>Body</strong>
+              <strong>{label('ext_body')}</strong>
               <p style={{ whiteSpace: 'pre-wrap' }}>{openWork.text}</p>
             </div>
           )}
           {canDecide && openWork.status === 'SUBMITTED' ? (
             <div className="grid-form" style={{ marginTop: 8 }}>
               <label>
-                Decision note (optional)
+                {label('ext_decisionNote')}
                 <input value={decisionNote} onChange={(e) => setDecisionNote(e.target.value)} />
               </label>
               <label>
-                Reject reason
+                {label('spc_rejectReason')}
                 <input
                   value={rejectReason}
                   onChange={(e) => setRejectReason(e.target.value)}
-                  placeholder="Required when rejecting"
+                  placeholder={label('ext_reasonPh')}
                 />
               </label>
             </div>
@@ -616,7 +635,7 @@ export default function ExtensionsPage() {
             (user?.id === openWork.owner?.id || canDecide) ? (
               <>
                 <button type="button" className="btn" disabled={busy} onClick={saveOpen}>
-                  Save
+                  {label('save')}
                 </button>
                 <button
                   type="button"
@@ -638,7 +657,7 @@ export default function ExtensionsPage() {
                     )
                   }
                 >
-                  Submit for approval
+                  {label('ext_submitApproval')}
                 </button>
               </>
             ) : null}
@@ -664,7 +683,7 @@ export default function ExtensionsPage() {
                     )
                   }
                 >
-                  Approve
+                  {label('ext_approve')}
                 </button>
                 {openWork.status === 'SUBMITTED' ? (
                   <button
@@ -687,13 +706,13 @@ export default function ExtensionsPage() {
                       )
                     }
                   >
-                    Reject
+                    {label('prs_reject')}
                   </button>
                 ) : null}
               </>
             ) : null}
             <button type="button" className="btn" onClick={() => setOpenWork(null)}>
-              Close
+              {label('close')}
             </button>
           </div>
         </div>
@@ -701,15 +720,15 @@ export default function ExtensionsPage() {
 
       {grouped.length === 0 ? (
         <div className="panel">
-          <p className="muted">No work records in this view yet. Draft one to populate the register.</p>
+          <p className="muted">{label('ext_empty')}</p>
         </div>
       ) : (
         grouped.map((section) => (
           <section key={section.key} className="work-section">
             <div className="work-section-head">
               <div>
-                <h2>{section.label}</h2>
-                {section.hint ? <p className="muted tiny">{section.hint}</p> : null}
+                <h2>{label(`ext_cat_${section.key}`)}</h2>
+                {section.hint ? <p className="muted tiny">{label('ext_legislativeHint')}</p> : null}
               </div>
               <span className="muted">{section.items.length}</span>
             </div>
@@ -727,17 +746,17 @@ export default function ExtensionsPage() {
                     <strong>{row.title}</strong>
                     <div className="muted">
                       {row.createdAt && +new Date(row.createdAt) > 0
-                        ? `${fmtDate(row.createdAt)} · `
+                        ? `${fmtDate(row.createdAt, locale)} · `
                         : ''}
                       {row.subtitle}
                     </div>
                   </div>
                   <span className={`work-status ${statusClass(row.status)}`}>
-                    {prettyStatus(row.status)}
+                    {statusText(row.status, label, lang)}
                   </span>
                   <div className="work-actions" onClick={(e) => e.stopPropagation()}>
                     {row.source === 'scaffold' ? (
-                      <span className="muted tiny">Tier C</span>
+                      <span className="muted tiny">{label('ext_tierC')}</span>
                     ) : (
                       <>
                         <button
@@ -750,28 +769,28 @@ export default function ExtensionsPage() {
                             )
                           }
                         >
-                          Actions ▾
+                          {label('actions')} ▾
                         </button>
                         {menuFor === `${row.source}-${row.id}` ? (
                           <div className="work-menu">
                             {row.source === 'work' ? (
                               <button type="button" onClick={() => openDetail(row)}>
-                                Open detail
+                                {label('ext_openDetail')}
                               </button>
                             ) : null}
                             {row.source === 'work' &&
                             (row.status === 'DRAFT' || row.status === 'REJECTED') ? (
                               <button type="button" onClick={() => act(row, 'submit')}>
-                                Submit for approval
-                              </button>
+                                {label('ext_submitApproval')}
+                </button>
                             ) : null}
                             {row.source === 'work' &&
                             canDecide &&
                             (row.status === 'DRAFT' || row.status === 'SUBMITTED') ? (
                               <>
                                 <button type="button" onClick={() => act(row, 'approve')}>
-                                  Approve
-                                </button>
+                                  {label('ext_approve')}
+                </button>
                                 {row.status === 'SUBMITTED' ? (
                                   <button
                                     type="button"
@@ -781,19 +800,19 @@ export default function ExtensionsPage() {
                                       setMenuFor(null);
                                     }}
                                   >
-                                    Reject…
+                                    {label('ext_rejectEllipsis')}
                                   </button>
                                 ) : null}
                               </>
                             ) : null}
                             {row.href ? (
                               <Link href={row.href} onClick={() => setMenuFor(null)}>
-                                Open module
+                                {label('ext_openModule')}
                               </Link>
                             ) : null}
                             {row.matterHref ? (
                               <Link href={row.matterHref} onClick={() => setMenuFor(null)}>
-                                Open matter
+                                {label('ext_openMatter')}
                               </Link>
                             ) : null}
                             {row.source === 'work' &&
@@ -801,7 +820,7 @@ export default function ExtensionsPage() {
                             row.status !== 'REJECTED' &&
                             !(canDecide && row.status === 'SUBMITTED') &&
                             !row.matterHref ? (
-                              <span className="muted tiny">No pending actions</span>
+                              <span className="muted tiny">{label('ext_noPending')}</span>
                             ) : null}
                           </div>
                         ) : null}

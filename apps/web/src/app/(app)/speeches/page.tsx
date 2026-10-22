@@ -6,6 +6,7 @@ import { api } from '@/lib/api';
 import { useAuth } from '@/components/AuthProvider';
 import { useToast } from '@/components/Toast';
 import { useLiveRefresh, notifyDataChanged } from '@/lib/live-refresh';
+import { tf } from '@/lib/i18n';
 
 type MatterOpt = { id: string; diaryNo: string; subject: string };
 
@@ -30,12 +31,7 @@ type Speech = {
   matter?: { id: string; diaryNo: string; subject: string } | null;
 };
 
-const FLOW = [
-  { n: 1, t: 'Prepare remarks' },
-  { n: 2, t: 'Source / AI assist' },
-  { n: 3, t: 'Human review & authorize' },
-  { n: 4, t: 'Teleprompter live' },
-];
+const FLOW = [{ n: 1 }, { n: 2 }, { n: 3 }, { n: 4 }];
 
 const emptyForm = {
   title: '',
@@ -54,16 +50,16 @@ function speechCode(id: string) {
   return `W-${id.replace(/-/g, '').slice(0, 8).toUpperCase()}`;
 }
 
-function langLabel(l: string) {
-  return l === 'ur' ? 'URDU' : 'ENGLISH';
+function langLabel(l: string, label: (k: string) => string) {
+  return (l === 'ur' ? label('files_urdu') : label('files_english')).toUpperCase();
 }
 
-function statusLabel(s: string) {
-  if (s === 'APPROVED') return 'Approved';
-  if (s === 'SUBMITTED') return 'Awaiting approval';
-  if (s === 'REJECTED') return 'Rejected';
-  if (s === 'ARCHIVED') return 'Archived';
-  return 'Draft';
+function statusLabel(s: string, label: (k: string) => string) {
+  if (s === 'APPROVED') return label('approved');
+  if (s === 'SUBMITTED') return label('spc_awaitingApproval');
+  if (s === 'REJECTED') return label('rejected');
+  if (s === 'ARCHIVED') return label('archived');
+  return label('draft');
 }
 
 function statusClass(s: string) {
@@ -84,7 +80,7 @@ function versionCount(body: string) {
 }
 
 export default function SpeechesPage() {
-  const { user } = useAuth();
+  const { user, label, lang } = useAuth();
   const toast = useToast();
   const [items, setItems] = useState<Speech[]>([]);
   const [matters, setMatters] = useState<MatterOpt[]>([]);
@@ -193,13 +189,13 @@ export default function SpeechesPage() {
           eventDate: form.eventDate || undefined,
         },
       });
-      toast.success('Speech prepared');
+      toast.success(label('spc_toastPrepared'));
       setShowForm(false);
       setForm(emptyForm);
       notifyDataChanged();
       await load();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Create failed');
+      toast.error(err instanceof Error ? err.message : label('createFailed'));
     } finally {
       setBusy(false);
     }
@@ -218,11 +214,13 @@ export default function SpeechesPage() {
           ...extra,
         },
       });
-      toast.success(extra?.markHumanReviewed ? 'Human review recorded' : 'Speech saved');
+      toast.success(
+        extra?.markHumanReviewed ? label('spc_toastReviewed') : label('spc_toastSaved'),
+      );
       notifyDataChanged();
       await load();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Save failed');
+      toast.error(err instanceof Error ? err.message : label('saveFailed'));
     } finally {
       setBusy(false);
     }
@@ -237,17 +235,17 @@ export default function SpeechesPage() {
       });
       toast.success(
         status === 'APPROVED'
-          ? 'Speech authorized for prompter'
+          ? label('spc_toastAuthorized')
           : status === 'SUBMITTED'
-            ? 'Submitted for authorization'
+            ? label('spc_toastSubmitted')
             : status === 'REJECTED'
-              ? 'Speech returned for revision'
-              : 'Status updated',
+              ? label('spc_toastReturned')
+              : label('spc_toastStatus'),
       );
       notifyDataChanged();
       await load();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Status update failed');
+      toast.error(err instanceof Error ? err.message : label('spc_statusFailed'));
     } finally {
       setBusy(false);
     }
@@ -257,12 +255,12 @@ export default function SpeechesPage() {
     if (!selected) return;
     setAiBusy(true);
     try {
-      const lang = edit.language === 'ur' ? 'Urdu' : 'English';
+      const draftLang = edit.language === 'ur' ? 'Urdu' : 'English';
       const res = await api<{ answer: string }>('/ai/ask', {
         method: 'POST',
         json: {
           matterId: edit.matterId || undefined,
-          question: `Draft polished Speaker remarks in ${lang} for formal parliamentary delivery. Human review is mandatory before official use. Title: ${edit.title}. Event venue: ${edit.eventVenue || 'n/a'}. Existing notes:\n${edit.body}\n\nAlso suggest 4–8 short talking points as a separate bullet list after a line that says TALKING POINTS:`,
+          question: `Draft polished Speaker remarks in ${draftLang} for formal parliamentary delivery. Human review is mandatory before official use. Title: ${edit.title}. Event venue: ${edit.eventVenue || 'n/a'}. Existing notes:\n${edit.body}\n\nAlso suggest 4–8 short talking points as a separate bullet list after a line that says TALKING POINTS:`,
         },
       });
       const answer = res.answer || '';
@@ -282,11 +280,11 @@ export default function SpeechesPage() {
           aiAssisted: true,
         },
       });
-      toast.success('AI draft inserted — mark human review before submit');
+      toast.success(label('spc_toastAiInserted'));
       notifyDataChanged();
       await load();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'AI draft unavailable');
+      toast.error(err instanceof Error ? err.message : label('spc_aiUnavailable'));
     } finally {
       setAiBusy(false);
     }
@@ -298,7 +296,7 @@ export default function SpeechesPage() {
         prompterLang === 'ur'
           ? s.talkingPointsUr || s.talkingPoints || ''
           : s.talkingPoints || s.talkingPointsUr || '';
-      return pts.trim() || 'No talking points recorded.';
+      return pts.trim() || label('spc_noPoints');
     }
     if (prompterLang === 'ur') {
       return stripMarker(s.bodyUr || s.body);
@@ -311,17 +309,16 @@ export default function SpeechesPage() {
       <div className="overview-hero">
         <div>
           <div className="eyebrow">
-            {user?.role === 'SPEAKER' ? "SPEAKER'S OFFICE" : 'OFFICE WORKFLOW'} · REMARKS
+            {user?.role === 'SPEAKER' ? label('hero_speakerOffice') : label('hero_officeWorkflow')} ·{' '}
+            {label('spc_eyebrowRemarks')}
           </div>
-          <h1>Speeches &amp; prompter</h1>
+          <h1>{label('spc_title')}</h1>
           <p className="muted">
-            Prepare briefs and speeches from authorized source material (consultation §3.5), keep
-            EN/UR text and talking points, require human review of AI drafts, authorize, then
-            deliver from the Speaker prompter.
+            {label('spc_heroSub')}
           </p>
         </div>
         <button type="button" className="btn primary" onClick={() => setShowForm((v) => !v)}>
-          {showForm ? 'Close form' : '+ Prepare speech'}
+          {showForm ? label('mtg_closeForm') : label('spc_prepare')}
         </button>
       </div>
 
@@ -329,17 +326,17 @@ export default function SpeechesPage() {
         {FLOW.map((s) => (
           <div key={s.n} className="speech-flow-step">
             <span>{s.n}</span>
-            <strong>{s.t}</strong>
+            <strong>{label(`spc_flow${s.n}`)}</strong>
           </div>
         ))}
       </div>
 
       {showForm ? (
         <div className="panel">
-          <h2>Prepare remarks</h2>
+          <h2>{label('spc_prepareRemarks')}</h2>
           <form className="grid-form" onSubmit={create}>
             <label>
-              Title
+              {label('title')}
               <input
                 value={form.title}
                 onChange={(e) => setForm({ ...form, title: e.target.value })}
@@ -348,17 +345,17 @@ export default function SpeechesPage() {
               />
             </label>
             <label>
-              Primary language
+              {label('spc_primaryLang')}
               <select
                 value={form.language}
                 onChange={(e) => setForm({ ...form, language: e.target.value })}
               >
-                <option value="en">English</option>
-                <option value="ur">Urdu</option>
+                <option value="en">{label('files_english')}</option>
+                <option value="ur">{label('files_urdu')}</option>
               </select>
             </label>
             <label>
-              Event date
+              {label('spc_eventDate')}
               <input
                 type="date"
                 value={form.eventDate}
@@ -366,20 +363,20 @@ export default function SpeechesPage() {
               />
             </label>
             <label>
-              Venue / occasion
+              {label('spc_venueOccasion')}
               <input
                 value={form.eventVenue}
                 onChange={(e) => setForm({ ...form, eventVenue: e.target.value })}
-                placeholder="e.g. National Assembly Chamber"
+                placeholder={label('spc_venuePh')}
               />
             </label>
             <label>
-              Source matter (optional)
+              {label('spc_sourceMatterOpt')}
               <select
                 value={form.matterId}
                 onChange={(e) => setForm({ ...form, matterId: e.target.value })}
               >
-                <option value="">No linked matter</option>
+                <option value="">{label('spc_noLinkedMatter')}</option>
                 {matters.map((m) => (
                   <option key={m.id} value={m.id}>
                     {m.diaryNo} — {m.subject}
@@ -388,15 +385,15 @@ export default function SpeechesPage() {
               </select>
             </label>
             <label>
-              Source citations
+              {label('spc_sourceCitations')}
               <input
                 value={form.sourcesNote}
                 onChange={(e) => setForm({ ...form, sourcesNote: e.target.value })}
-                placeholder="Diary nos, brief titles, attachments reviewed"
+                placeholder={label('spc_citationsPh')}
               />
             </label>
             <label>
-              Remarks (primary)
+              {label('spc_remarksPrimary')}
               <textarea
                 rows={5}
                 value={form.body}
@@ -407,7 +404,7 @@ export default function SpeechesPage() {
               />
             </label>
             <label>
-              Remarks (Urdu / second language)
+              {label('spc_remarksSecond')}
               <textarea
                 rows={4}
                 value={form.bodyUr}
@@ -416,16 +413,16 @@ export default function SpeechesPage() {
               />
             </label>
             <label>
-              Talking points
+              {label('spc_talkingPoints')}
               <textarea
                 rows={3}
                 value={form.talkingPoints}
                 onChange={(e) => setForm({ ...form, talkingPoints: e.target.value })}
-                placeholder="Short bullets for briefing / prompter"
+                placeholder={label('spc_pointsPh')}
               />
             </label>
             <button type="submit" className="btn primary" disabled={busy}>
-              Save draft speech
+              {label('spc_saveDraft')}
             </button>
           </form>
         </div>
@@ -439,7 +436,7 @@ export default function SpeechesPage() {
             className={`btn ${filter === f ? 'primary' : ''}`}
             onClick={() => setFilter(f)}
           >
-            {f === 'ALL' ? 'Active' : statusLabel(f)}
+            {f === 'ALL' ? label('active') : statusLabel(f, label)}
           </button>
         ))}
       </div>
@@ -447,7 +444,7 @@ export default function SpeechesPage() {
       <div className="speech-grid">
         {visible.length === 0 ? (
           <div className="panel">
-            <p className="muted">No speeches in this filter. Prepare remarks to begin.</p>
+            <p className="muted">{label('spc_noneInFilter')}</p>
           </div>
         ) : (
           visible.map((s) => {
@@ -455,23 +452,23 @@ export default function SpeechesPage() {
             return (
               <article key={s.id} className="speech-card">
                 <div className="speech-meta">
-                  {speechCode(s.id)} · {langLabel(s.language)}
+                  {speechCode(s.id)} · {langLabel(s.language, label)}
                   {s.matter ? ` · ${s.matter.diaryNo}` : ''}
                 </div>
                 <h3>{s.title}</h3>
                 <div className="speech-card-mid">
                   <span className={`speech-status ${statusClass(s.status)}`}>
-                    {statusLabel(s.status)}
+                    {statusLabel(s.status, label)}
                   </span>
                   <span className="muted tiny">
-                    {versionCount(s.body)} version(s)
-                    {s.aiAssisted ? ' · AI-assisted' : ''}
+                    {tf(lang, 'spc_versions', { n: versionCount(s.body) })}
+                    {s.aiAssisted ? ` · ${label('spc_aiAssisted')}` : ''}
                   </span>
                 </div>
                 {s.eventVenue ? <p className="muted tiny">{s.eventVenue}</p> : null}
                 <div className="speech-card-actions">
                   <button type="button" className="btn" onClick={() => setOpenId(s.id)}>
-                    Open speech record
+                    {label('spc_openRecord')}
                   </button>
                   {approved ? (
                     <button
@@ -479,13 +476,13 @@ export default function SpeechesPage() {
                       className="btn primary"
                       onClick={() => setPrompterId(s.id)}
                     >
-                      Open Speaker prompter
+                      {label('spc_openPrompter')}
                     </button>
                   ) : null}
                 </div>
                 {!approved ? (
                   <div className="speech-note">
-                    Authorize the reviewed speech before using the prompter.
+                    {label('spc_authorizeFirst')}
                   </div>
                 ) : null}
               </article>
@@ -500,27 +497,27 @@ export default function SpeechesPage() {
             <div className="meet-section-head">
               <div>
                 <div className="eyebrow">
-                  {speechCode(selected.id)} · {langLabel(selected.language)} ·{' '}
-                  {statusLabel(selected.status)}
+                  {speechCode(selected.id)} · {langLabel(selected.language, label)} ·{' '}
+                  {statusLabel(selected.status, label)}
                 </div>
-                <h2>Speech record</h2>
+                <h2>{label('spc_record')}</h2>
               </div>
               <button type="button" className="btn" onClick={() => setOpenId(null)}>
-                Close
+                {label('close')}
               </button>
             </div>
 
             {selected.aiAssisted ? (
               <div className={`speech-ai-banner ${selected.humanReviewedAt ? 'ok' : 'warn'}`}>
                 {selected.humanReviewedAt
-                  ? 'AI-assisted text — human review recorded'
-                  : 'AI-assisted text — human review required before submit/approve'}
+                  ? label('spc_aiReviewed')
+                  : label('spc_aiReviewRequired')}
               </div>
             ) : null}
 
             {selected.matter ? (
               <p className="muted tiny">
-                Source matter:{' '}
+                {label('spc_sourceMatter')}:{' '}
                 <Link href={`/files/${selected.matter.id}`}>
                   {selected.matter.diaryNo} — {selected.matter.subject}
                 </Link>
@@ -528,24 +525,24 @@ export default function SpeechesPage() {
             ) : null}
 
             <label className="speech-field">
-              Title
+              {label('title')}
               <input
                 value={edit.title}
                 onChange={(e) => setEdit({ ...edit, title: e.target.value })}
               />
             </label>
             <label className="speech-field">
-              Language
+              {label('files_language')}
               <select
                 value={edit.language}
                 onChange={(e) => setEdit({ ...edit, language: e.target.value })}
               >
-                <option value="en">English</option>
-                <option value="ur">Urdu</option>
+                <option value="en">{label('files_english')}</option>
+                <option value="ur">{label('files_urdu')}</option>
               </select>
             </label>
             <label className="speech-field">
-              Event date
+              {label('spc_eventDate')}
               <input
                 type="date"
                 value={edit.eventDate}
@@ -553,19 +550,19 @@ export default function SpeechesPage() {
               />
             </label>
             <label className="speech-field">
-              Venue
+              {label('spc_venue')}
               <input
                 value={edit.eventVenue}
                 onChange={(e) => setEdit({ ...edit, eventVenue: e.target.value })}
               />
             </label>
             <label className="speech-field">
-              Source matter
+              {label('spc_sourceMatter')}
               <select
                 value={edit.matterId}
                 onChange={(e) => setEdit({ ...edit, matterId: e.target.value })}
               >
-                <option value="">None</option>
+                <option value="">{label('none')}</option>
                 {matters.map((m) => (
                   <option key={m.id} value={m.id}>
                     {m.diaryNo} — {m.subject}
@@ -574,7 +571,7 @@ export default function SpeechesPage() {
               </select>
             </label>
             <label className="speech-field">
-              Source citations
+              {label('spc_sourceCitations')}
               <textarea
                 rows={2}
                 value={edit.sourcesNote}
@@ -582,7 +579,7 @@ export default function SpeechesPage() {
               />
             </label>
             <label className="speech-field">
-              Remarks (primary)
+              {label('spc_remarksPrimary')}
               <textarea
                 rows={8}
                 value={edit.body}
@@ -591,7 +588,7 @@ export default function SpeechesPage() {
               />
             </label>
             <label className="speech-field">
-              Remarks (Urdu)
+              {label('spc_remarksUrdu')}
               <textarea
                 rows={5}
                 value={edit.bodyUr}
@@ -600,7 +597,7 @@ export default function SpeechesPage() {
               />
             </label>
             <label className="speech-field">
-              Talking points
+              {label('spc_talkingPoints')}
               <textarea
                 rows={4}
                 value={edit.talkingPoints}
@@ -608,7 +605,7 @@ export default function SpeechesPage() {
               />
             </label>
             <label className="speech-field">
-              Talking points (Urdu)
+              {label('spc_pointsUrdu')}
               <textarea
                 rows={3}
                 value={edit.talkingPointsUr}
@@ -619,10 +616,10 @@ export default function SpeechesPage() {
 
             <div className="speech-drawer-actions">
               <button type="button" className="btn" disabled={busy} onClick={() => saveEdit()}>
-                Save version
+                {label('spc_saveVersion')}
               </button>
               <button type="button" className="btn" disabled={aiBusy} onClick={aiDraft}>
-                {aiBusy ? 'Drafting…' : 'AI assist (source-grounded)'}
+                {aiBusy ? label('spc_drafting') : label('spc_aiAssist')}
               </button>
               {selected.aiAssisted && !selected.humanReviewedAt ? (
                 <button
@@ -631,11 +628,11 @@ export default function SpeechesPage() {
                   disabled={busy}
                   onClick={() => saveEdit({ markHumanReviewed: true })}
                 >
-                  Mark human review complete
+                  {label('spc_markReviewed')}
                 </button>
               ) : null}
               <Link href="/ai" className="btn">
-                Open AI Helper
+                {label('spc_openAi')}
               </Link>
               {(selected.status === 'DRAFT' || selected.status === 'REJECTED') ? (
                 <button
@@ -644,7 +641,7 @@ export default function SpeechesPage() {
                   disabled={busy}
                   onClick={() => setStatus(selected.id, 'SUBMITTED')}
                 >
-                  Submit for authorization
+                  {label('spc_submitAuth')}
                 </button>
               ) : null}
               {canAuthorize && selected.status !== 'APPROVED' && selected.status !== 'ARCHIVED' ? (
@@ -654,7 +651,7 @@ export default function SpeechesPage() {
                   disabled={busy}
                   onClick={() => setStatus(selected.id, 'APPROVED')}
                 >
-                  Authorize speech
+                  {label('spc_authorize')}
                 </button>
               ) : null}
               {canAuthorize && selected.status === 'SUBMITTED' ? (
@@ -663,7 +660,7 @@ export default function SpeechesPage() {
                     className="speech-reject-input"
                     value={rejectReason}
                     onChange={(e) => setRejectReason(e.target.value)}
-                    placeholder="Reject reason"
+                    placeholder={label('spc_rejectReason')}
                   />
                   <button
                     type="button"
@@ -671,7 +668,7 @@ export default function SpeechesPage() {
                     disabled={busy || rejectReason.trim().length < 5}
                     onClick={() => setStatus(selected.id, 'REJECTED', rejectReason)}
                   >
-                    Reject / return
+                    {label('spc_rejectReturn')}
                   </button>
                 </>
               ) : null}
@@ -684,7 +681,7 @@ export default function SpeechesPage() {
                     setOpenId(null);
                   }}
                 >
-                  Open prompter
+                  {label('spc_openPrompterShort')}
                 </button>
               ) : null}
             </div>
@@ -696,7 +693,7 @@ export default function SpeechesPage() {
         <div className={`speech-prompter ${mirror ? 'mirror' : ''}`}>
           <div className="speech-prompter-bar">
             <div>
-              <div className="eyebrow">Speaker prompter · live</div>
+              <div className="eyebrow">{label('spc_prompterLive')}</div>
               <strong>{prompter.title}</strong>
               {prompter.eventVenue ? (
                 <div className="muted tiny" style={{ color: '#9bb5a6' }}>
@@ -710,21 +707,21 @@ export default function SpeechesPage() {
                 className={`btn ${prompterMode === 'remarks' ? 'primary' : ''}`}
                 onClick={() => setPrompterMode('remarks')}
               >
-                Remarks
+                {label('spc_remarks')}
               </button>
               <button
                 type="button"
                 className={`btn ${prompterMode === 'points' ? 'primary' : ''}`}
                 onClick={() => setPrompterMode('points')}
               >
-                Talking points
+                {label('spc_talkingPoints')}
               </button>
               <button
                 type="button"
                 className="btn"
                 onClick={() => setPrompterLang((l) => (l === 'en' ? 'ur' : 'en'))}
               >
-                {prompterLang === 'en' ? 'EN → UR' : 'UR → EN'}
+                {prompterLang === 'en' ? label('spc_enToUr') : label('spc_urToEn')}
               </button>
               <button
                 type="button"
@@ -745,13 +742,17 @@ export default function SpeechesPage() {
                 className="btn"
                 onClick={() => setScrollSpeed((v) => (v === 0 ? 1 : v === 1 ? 2 : 0))}
               >
-                {scrollSpeed === 0 ? 'Scroll' : scrollSpeed === 1 ? 'Faster' : 'Pause'}
+                {scrollSpeed === 0
+                  ? label('spc_scroll')
+                  : scrollSpeed === 1
+                    ? label('spc_faster')
+                    : label('spc_pause')}
               </button>
               <button type="button" className="btn" onClick={() => setMirror((v) => !v)}>
-                Mirror
+                {label('spc_mirror')}
               </button>
               <button type="button" className="btn" onClick={() => setPrompterId(null)}>
-                Exit
+                {label('spc_exit')}
               </button>
             </div>
           </div>

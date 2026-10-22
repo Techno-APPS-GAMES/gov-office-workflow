@@ -90,12 +90,13 @@ export const ROLE_NAV: Record<Role, string[]> = {
   ],
 };
 
+/** Group id is an i18n key (nav.group.* / myDesk, …); labels come from the web app dictionary. */
 export const NAV_GROUPS: [string, string[]][] = [
-  ['My desk', ['overview', 'inbox', 'ai', 'messages']],
-  ['Files & decisions', ['files', 'registry', 'vault', 'movement', 'directions', 'calls', 'remote']],
-  ['Calendar & media', ['meetings', 'schedule', 'speeches', 'press', 'greetings']],
-  ['Research & records', ['search', 'extensions', 'people']],
-  ['Governance', ['audit']],
+  ['myDesk', ['overview', 'inbox', 'ai', 'messages']],
+  ['filesDecisions', ['files', 'registry', 'vault', 'movement', 'directions', 'calls', 'remote']],
+  ['calendarMedia', ['meetings', 'schedule', 'speeches', 'press', 'greetings']],
+  ['researchRecords', ['search', 'extensions', 'people']],
+  ['governance', ['audit']],
 ];
 
 export const ROLE_META: Record<

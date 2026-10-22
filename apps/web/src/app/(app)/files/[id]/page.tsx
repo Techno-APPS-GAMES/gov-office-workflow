@@ -7,6 +7,7 @@ import { useAuth } from '@/components/AuthProvider';
 import { useToast } from '@/components/Toast';
 import { PageHeader } from '@/components/PageHeader';
 import { useLiveRefresh, notifyDataChanged } from '@/lib/live-refresh';
+import { enumLabel, roleTitle, tf } from '@/lib/i18n';
 
 type Tab = 'overview' | 'journey' | 'notes' | 'attachments' | 'letters' | 'related' | 'versions';
 
@@ -31,7 +32,7 @@ type MatterHit = {
 function MatterDetailInner() {
   const { id } = useParams<{ id: string }>();
   const search = useSearchParams();
-  const { user, label } = useAuth();
+  const { user, lang, label } = useAuth();
   const toast = useToast();
   const [matter, setMatter] = useState<any>(null);
   const [people, setPeople] = useState<{ id: string; displayName: string }[]>([]);
@@ -143,7 +144,7 @@ function MatterDetailInner() {
       });
   }
 
-  if (!matter) return <p className="muted">{error || 'Loading…'}</p>;
+  if (!matter) return <p className="muted">{error || label('fd_loadingMatter')}</p>;
 
   return (
     <>
@@ -152,8 +153,10 @@ function MatterDetailInner() {
         subtitle={matter.subject}
         actions={
           <div className="row">
-            <span className={`badge ${matter.status}`}>{String(matter.status).replace(/_/g, ' ')}</span>
-            <span className={`badge ${matter.classification}`}>{matter.classification}</span>
+            <span className={`badge ${matter.status}`}>{enumLabel(lang, String(matter.status))}</span>
+            <span className={`badge ${matter.classification}`}>
+              {enumLabel(lang, matter.classification)}
+            </span>
           </div>
         }
       />
@@ -164,7 +167,7 @@ function MatterDetailInner() {
           ['overview', 'journey', 'notes', 'attachments', 'letters', 'related', 'versions'] as Tab[]
         ).map((t) => (
           <button key={t} type="button" className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>
-            {t[0].toUpperCase() + t.slice(1)}
+            {label(`fd_tab_${t}`)}
           </button>
         ))}
       </div>
@@ -172,16 +175,19 @@ function MatterDetailInner() {
       {tab === 'overview' && (
         <>
           <div className="panel">
-            <h2>Correspondence</h2>
+            <h2>{label('fd_correspondence')}</h2>
             <p style={{ whiteSpace: 'pre-wrap' }}>{matter.body}</p>
             {matter.decisionText && (
-              <p><strong>Decision:</strong> {matter.decisionType} — {matter.decisionText}</p>
+              <p>
+                <strong>{label('files_decision')}:</strong> {enumLabel(lang, matter.decisionType)} —{' '}
+                {matter.decisionText}
+              </p>
             )}
           </div>
 
           {putUp && (
             <div className="panel">
-              <h2>Speaker put-up checklist</h2>
+              <h2>{label('fd_putUpTitle')}</h2>
               <p className={putUp.ready ? '' : 'error'}>
                 {putUp.ready ? label('putUpReady') : label('putUpNotReady')}
               </p>
@@ -197,12 +203,12 @@ function MatterDetailInner() {
 
           <div className="panel">
             <h2>{label('generateSummary')} / {label('acceptSummary')}</h2>
-            <p className="muted">
-              EN/UR summary for the demo scenario. Not official until Accept (human review).
-            </p>
+            <p className="muted">{label('fd_summaryHelp')}</p>
             {matter.aiSummaryAcceptedAt && (
               <p className="muted">
-                Accepted {new Date(matter.aiSummaryAcceptedAt).toLocaleString()}
+                {tf(lang, 'fd_acceptedAt', {
+                  date: new Date(matter.aiSummaryAcceptedAt).toLocaleString(),
+                })}
               </p>
             )}
             <textarea
@@ -210,13 +216,13 @@ function MatterDetailInner() {
               data-live-keep="summary"
               value={summaryEdit}
               onChange={(e) => setSummaryEdit(e.target.value)}
-              placeholder="No summary yet"
+              placeholder={label('fd_noSummary')}
               style={{ width: '100%', marginBottom: 8 }}
             />
             <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
               <select value={summaryLang} onChange={(e) => setSummaryLang(e.target.value as 'en' | 'ur')}>
-                <option value="en">English</option>
-                <option value="ur">اردو</option>
+                <option value="en">{label('files_english')}</option>
+                <option value="ur">{label('files_urdu')}</option>
               </select>
               <button
                 type="button"
@@ -230,7 +236,7 @@ function MatterDetailInner() {
                       }).then((m: any) => {
                         setSummaryEdit(m.aiSummary || '');
                       }),
-                    'Summary generated — review then Accept',
+                    label('fd_toastSummaryGen'),
                   )
                 }
               >
@@ -246,7 +252,7 @@ function MatterDetailInner() {
                         method: 'POST',
                         json: { text: summaryEdit },
                       }),
-                    'Summary accepted',
+                    label('fd_toastSummaryAccepted'),
                   )
                 }
               >
@@ -256,7 +262,7 @@ function MatterDetailInner() {
           </div>
 
           <div className="panel">
-            <h2>Route / procedure</h2>
+            <h2>{label('fd_routeTitle')}</h2>
             {templates.length > 0 && (
               <form
                 className="row"
@@ -269,7 +275,7 @@ function MatterDetailInner() {
                         method: 'POST',
                         json: { templateId },
                       }),
-                    'Template applied',
+                    label('fd_toastTemplate'),
                   );
                 }}
               >
@@ -297,22 +303,22 @@ function MatterDetailInner() {
                       ...(routeDue ? { dueDate: routeDue } : {}),
                     },
                   }),
-                'Routed',
+                label('fd_toastRouted'),
               );
             }}>
               <div className="field">
-                <label>To</label>
+                <label>{label('to')}</label>
                 <select value={routeTo} onChange={(e) => setRouteTo(e.target.value)} required>
-                  <option value="">Select officer</option>
+                  <option value="">{label('fd_selectOfficer')}</option>
                   {people.map((p) => <option key={p.id} value={p.id}>{p.displayName}</option>)}
                 </select>
               </div>
               <div className="field">
-                <label>Procedure</label>
+                <label>{label('fd_procedure')}</label>
                 <input value={procedure} onChange={(e) => setProcedure(e.target.value)} required />
               </div>
               <div className="field">
-                <label>Due date (optional)</label>
+                <label>{label('fd_dueOptional')}</label>
                 <input
                   type="date"
                   value={routeDue}
@@ -320,14 +326,14 @@ function MatterDetailInner() {
                   onChange={(e) => setRouteDue(e.target.value)}
                 />
               </div>
-              <button className="btn primary" type="submit">Route</button>
+              <button className="btn primary" type="submit">{label('fd_routeBtn')}</button>
             </form>
             <div className="actions" style={{ marginTop: 12 }}>
-              <button type="button" className="btn" onClick={() => run(() => api(`/files/${id}/acknowledge`, { method: 'POST' }), 'Acknowledged')}>
-                Acknowledge receipt
+              <button type="button" className="btn" onClick={() => run(() => api(`/files/${id}/acknowledge`, { method: 'POST' }), label('fd_toastAck'))}>
+                {label('files_acknowledge')}
               </button>
-              <button type="button" className="btn" onClick={() => run(() => api(`/files/${id}/complete-procedure`, { method: 'POST', json: { outcome: 'Procedure complete' } }), 'Procedure complete')}>
-                Complete procedure
+              <button type="button" className="btn" onClick={() => run(() => api(`/files/${id}/complete-procedure`, { method: 'POST', json: { outcome: 'Procedure complete' } }), label('fd_toastProcComplete'))}>
+                {label('files_completeProcedure')}
               </button>
             </div>
             {matter.status !== 'CLOSED' &&
@@ -348,40 +354,40 @@ function MatterDetailInner() {
                     });
                     setReturnRemarks('');
                     setReturnTo('');
-                  }, 'Returned with remarks');
+                  }, label('fd_toastReturned'));
                 }}
               >
-                <h3 style={{ margin: 0 }}>Return with remarks</h3>
+                <h3 style={{ margin: 0 }}>{label('files_returnFile')}</h3>
                 <p className="muted" style={{ margin: 0 }}>
-                  Send the file back to the previous officer (or choose one). They must acknowledge receipt.
+                  {label('fd_returnHelp')}
                 </p>
                 <div className="field">
-                  <label>Remarks (min 10 characters)</label>
+                  <label>{label('fd_remarksMin')}</label>
                   <textarea
                     rows={3}
                     value={returnRemarks}
                     onChange={(e) => setReturnRemarks(e.target.value)}
                     minLength={10}
                     required
-                    placeholder="Reason for return, e.g. incomplete briefing / clarification needed"
+                    placeholder={label('fd_returnPlaceholder')}
                   />
                 </div>
                 <div className="field">
-                  <label>Return to (optional — defaults to previous holder)</label>
+                  <label>{label('fd_returnToOpt')}</label>
                   <select value={returnTo} onChange={(e) => setReturnTo(e.target.value)}>
-                    <option value="">Previous officer</option>
+                    <option value="">{label('fd_prevOfficer')}</option>
                     {people.map((p) => (
                       <option key={p.id} value={p.id}>{p.displayName}</option>
                     ))}
                   </select>
                 </div>
-                <button className="btn" type="submit">Return file</button>
+                <button className="btn" type="submit">{label('fd_returnBtn')}</button>
               </form>
             )}
           </div>
           {(user?.role === 'SPEAKER' || user?.role === 'ADMIN') && (
             <div className="panel">
-              <h2>Speaker decision</h2>
+              <h2>{label('fd_speakerDecision')}</h2>
               <form className="grid-form" onSubmit={(e) => {
                 e.preventDefault();
                 const payload = {
@@ -395,25 +401,25 @@ function MatterDetailInner() {
                       }
                     : {}),
                 };
-                run(() => api(`/files/${id}/decide`, { method: 'POST', json: payload }), 'Decision recorded');
+                run(() => api(`/files/${id}/decide`, { method: 'POST', json: payload }), label('fd_toastDecision'));
               }}>
                 <div className="field">
-                  <label>Decision text</label>
+                  <label>{label('files_decisionText')}</label>
                   <textarea value={decision.text} onChange={(e) => setDecision({ ...decision, text: e.target.value })} required />
                 </div>
                 <div className="field">
-                  <label>Type</label>
+                  <label>{label('type')}</label>
                   <select value={decision.decisionType} onChange={(e) => setDecision({ ...decision, decisionType: e.target.value })}>
-                    <option value="APPROVE">Approve</option>
-                    <option value="REJECT">Reject</option>
-                    <option value="DIRECTION">Direction</option>
-                    <option value="NO_FURTHER_ACTION">No further action</option>
+                    <option value="APPROVE">{enumLabel(lang, 'APPROVE')}</option>
+                    <option value="REJECT">{enumLabel(lang, 'REJECT')}</option>
+                    <option value="DIRECTION">{enumLabel(lang, 'DIRECTION')}</option>
+                    <option value="NO_FURTHER_ACTION">{enumLabel(lang, 'NO_FURTHER_ACTION')}</option>
                   </select>
                 </div>
                 {decision.decisionType === 'DIRECTION' && (
                   <>
                     <div className="field">
-                      <label>Direction title</label>
+                      <label>{label('fd_directionTitle')}</label>
                       <input
                         value={decision.directionTitle}
                         onChange={(e) => setDecision({ ...decision, directionTitle: e.target.value })}
@@ -421,18 +427,18 @@ function MatterDetailInner() {
                       />
                     </div>
                     <div className="field">
-                      <label>Owner</label>
+                      <label>{label('owner')}</label>
                       <select
                         value={decision.ownerUserId}
                         onChange={(e) => setDecision({ ...decision, ownerUserId: e.target.value })}
                         required
                       >
-                        <option value="">Select</option>
+                        <option value="">{label('fd_select')}</option>
                         {people.map((p) => <option key={p.id} value={p.id}>{p.displayName}</option>)}
                       </select>
                     </div>
                     <div className="field">
-                      <label>Due date</label>
+                      <label>{label('fd_dueDate')}</label>
                       <input
                         type="date"
                         value={decision.dueDate}
@@ -443,7 +449,7 @@ function MatterDetailInner() {
                     </div>
                   </>
                 )}
-                <button className="btn primary" type="submit">Record decision</button>
+                <button className="btn primary" type="submit">{label('files_recordDecision')}</button>
               </form>
             </div>
           )}
@@ -453,11 +459,10 @@ function MatterDetailInner() {
             user?.role === 'ADMIN') &&
             matter.status !== 'CLOSED' && (
             <div className="panel">
-              <h2>Remote e-sign</h2>
+              <h2>{label('fd_remoteTitle')}</h2>
               <p className="muted">
-                Queue this file for secure remote review and digital seal (consultation §3.5).
-                Continues in{' '}
-                <a href="/remote">Remote studio</a>.
+                {label('fd_remoteHelp')} {label('fd_continuesIn')}{' '}
+                <a href="/remote">{label('fd_remoteStudio')}</a>.
               </p>
               <form
                 className="grid-form"
@@ -475,24 +480,24 @@ function MatterDetailInner() {
                         method: esignMethod,
                       },
                     });
-                    toast.success('Remote seal requested');
+                    toast.success(label('fd_toastSealRequested'));
                     notifyDataChanged();
                     setEsignPurpose('');
                   } catch (err) {
-                    toast.error(err instanceof Error ? err.message : 'E-sign request failed');
+                    toast.error(err instanceof Error ? err.message : label('fd_esignFailed'));
                   } finally {
                     setEsignBusy(false);
                   }
                 }}
               >
                 <div className="field">
-                  <label>Designated signer</label>
+                  <label>{label('remote_signer')}</label>
                   <select
                     value={esignSigner}
                     onChange={(e) => setEsignSigner(e.target.value)}
                     required
                   >
-                    <option value="">Select</option>
+                    <option value="">{label('fd_select')}</option>
                     {people.map((p) => (
                       <option key={p.id} value={p.id}>
                         {p.displayName}
@@ -501,60 +506,58 @@ function MatterDetailInner() {
                   </select>
                 </div>
                 <div className="field">
-                  <label>Purpose</label>
+                  <label>{label('remote_purpose')}</label>
                   <input
                     value={esignPurpose}
                     onChange={(e) => setEsignPurpose(e.target.value)}
-                    placeholder="What the signer is approving"
+                    placeholder={label('fd_purposePlaceholder')}
                   />
                 </div>
                 <div className="field">
-                  <label>Method</label>
+                  <label>{label('remote_method')}</label>
                   <select
                     value={esignMethod}
                     onChange={(e) => setEsignMethod(e.target.value as 'LOCAL_PKI' | 'WET_INK')}
                   >
-                    <option value="LOCAL_PKI">Local PKI (RSA-SHA256)</option>
-                    <option value="WET_INK">Wet-ink scan</option>
+                    <option value="LOCAL_PKI">{enumLabel(lang, 'LOCAL_PKI')}</option>
+                    <option value="WET_INK">{label('fd_methodWet')}</option>
                   </select>
                 </div>
                 <button className="btn primary" type="submit" disabled={esignBusy}>
-                  Request remote seal
+                  {label('files_remoteSeal')}
                 </button>
               </form>
             </div>
           )}
           {(user?.role === 'SPEAKER' || user?.role === 'ADMIN') && matter.status !== 'CLOSED' && (
             <div className="panel">
-              <h2>Close matter</h2>
-              <p className="muted">
-                Close only after linked directions are verified. Open directions will block closure.
-              </p>
+              <h2>{label('files_closeMatter')}</h2>
+              <p className="muted">{label('fd_closeHelp')}</p>
               <form
                 className="grid-form"
                 onSubmit={(e) => {
                   e.preventDefault();
-                  if (!window.confirm(`Close ${matter.diaryNo}? This archives the file.`)) return;
+                  if (!window.confirm(tf(lang, 'fd_closeConfirm', { diaryNo: matter.diaryNo }))) return;
                   run(
                     () =>
                       api(`/files/${id}/close`, {
                         method: 'POST',
                         json: { outcome: closeOutcome || 'Matter closed' },
                       }),
-                    'Matter closed',
+                    label('fd_toastClosed'),
                   );
                 }}
               >
                 <div className="field">
-                  <label>Outcome (optional)</label>
+                  <label>{label('fd_outcomeOpt')}</label>
                   <input
                     value={closeOutcome}
                     onChange={(e) => setCloseOutcome(e.target.value)}
-                    placeholder="Final outcome note"
+                    placeholder={label('fd_outcomePlaceholder')}
                   />
                 </div>
                 <button className="btn" type="submit">
-                  Close matter
+                  {label('files_closeMatter')}
                 </button>
               </form>
             </div>
@@ -564,23 +567,23 @@ function MatterDetailInner() {
 
       {tab === 'journey' && (
         <div className="panel">
-          <h2>Journey</h2>
+          <h2>{label('fd_journey')}</h2>
           <ul className="timeline">
             {(matter.journeyEvents || []).map((j: any) => (
               <li key={j.id}>
-                <strong>{j.kind}</strong> — {j.summary}
+                <strong>{enumLabel(lang, j.kind)}</strong> — {j.summary}
                 <div className="muted">{new Date(j.createdAt).toLocaleString()}</div>
               </li>
             ))}
           </ul>
           {(matter.routeSteps || []).length > 0 && (
             <>
-              <h3 style={{ marginTop: 18 }}>Route steps</h3>
+              <h3 style={{ marginTop: 18 }}>{label('fd_routeSteps')}</h3>
               <ul className="timeline">
                 {matter.routeSteps.map((s: any) => (
                   <li key={s.id}>
                     {s.fromUser?.displayName || '—'} → {s.toUser?.displayName || '—'}
-                    <div className="muted">{s.procedure} · {s.status} · {new Date(s.createdAt).toLocaleString()}</div>
+                    <div className="muted">{s.procedure} · {enumLabel(lang, s.status)} · {new Date(s.createdAt).toLocaleString()}</div>
                   </li>
                 ))}
               </ul>
@@ -591,26 +594,24 @@ function MatterDetailInner() {
 
       {tab === 'notes' && (
         <div className="panel">
-          <h2>Noting sheet</h2>
-          <p className="muted">
-            Numbered paragraphs are append-only. Once saved, a note cannot be edited or deleted.
-          </p>
+          <h2>{label('fd_notingSheet')}</h2>
+          <p className="muted">{label('fd_notesHelp')}</p>
           <ul className="timeline">
             {(matter.notes || []).map((n: any) => (
               <li key={n.id}>
                 <strong>
                   #{n.number}
-                  {n.kind && n.kind !== 'NOTE' ? ` · ${String(n.kind).replace(/_/g, ' ')}` : ''}
+                  {n.kind && n.kind !== 'NOTE' ? ` · ${enumLabel(lang, String(n.kind))}` : ''}
                 </strong>{' '}
-                — {n.author?.displayName || 'Officer'}
+                — {n.author?.displayName || label('officer')}
                 {n.author?.role ? (
-                  <span className="muted"> · {String(n.author.role).replace(/_/g, ' ')}</span>
+                  <span className="muted"> · {roleTitle(lang, String(n.author.role))}</span>
                 ) : null}
                 <div style={{ whiteSpace: 'pre-wrap', marginTop: 4 }}>{n.text}</div>
                 <div className="muted">{new Date(n.createdAt).toLocaleString()}</div>
               </li>
             ))}
-            {!matter.notes?.length && <li className="muted">No noting paras yet.</li>}
+            {!matter.notes?.length && <li className="muted">{label('fd_noParas')}</li>}
           </ul>
           <form
             className="grid-form"
@@ -623,30 +624,30 @@ function MatterDetailInner() {
                   json: { text: note, kind: noteKind },
                 });
                 setNote('');
-              }, 'Para added');
+              }, label('fd_toastPara'));
             }}
           >
             <div className="field">
-              <label>Kind</label>
+              <label>{label('fd_kind')}</label>
               <select value={noteKind} onChange={(e) => setNoteKind(e.target.value)}>
-                <option value="NOTE">Note</option>
-                <option value="PUT_UP">Put up</option>
-                <option value="OBSERVATION">Observation</option>
+                <option value="NOTE">{enumLabel(lang, 'NOTE')}</option>
+                <option value="PUT_UP">{enumLabel(lang, 'PUT_UP')}</option>
+                <option value="OBSERVATION">{enumLabel(lang, 'OBSERVATION')}</option>
               </select>
             </div>
             <div className="field">
-              <label>Paragraph text</label>
+              <label>{label('fd_paraText')}</label>
               <textarea
                 rows={3}
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
-                placeholder="Add noting paragraph"
+                placeholder={label('fd_paraPlaceholder')}
                 minLength={3}
                 required
               />
             </div>
             <button className="btn primary" type="submit">
-              Add para
+              {label('fd_addPara')}
             </button>
           </form>
         </div>
@@ -654,13 +655,15 @@ function MatterDetailInner() {
 
       {tab === 'attachments' && (
         <div className="panel">
-          <h2>Attachments</h2>
+          <h2>{label('files_attachments')}</h2>
           <ul className="timeline">
             {(matter.attachments || []).map((a: any) => (
               <li key={a.id}>
                 <div className="row" style={{ flexWrap: 'wrap', gap: 10, alignItems: 'center' }}>
                   <strong style={{ color: 'var(--pine)' }}>{a.fileName}</strong>
-                  <span className="muted">({a.sizeBytes.toLocaleString()} bytes)</span>
+                  <span className="muted">
+                    {tf(lang, 'fd_bytes', { size: a.sizeBytes.toLocaleString() })}
+                  </span>
                   <button
                     type="button"
                     className="btn primary"
@@ -670,11 +673,11 @@ function MatterDetailInner() {
                         if (matter.classification === 'CONFIDENTIAL') {
                           reason =
                             window.prompt(
-                              'Confidential download — enter reason (min 5 characters):',
+                              label('fd_confPrompt'),
                               'Official review',
                             ) || '';
                           if (reason.trim().length < 5) {
-                            toast.error('Reason required for confidential download');
+                            toast.error(label('fd_reasonRequired'));
                             return;
                           }
                         }
@@ -684,7 +687,7 @@ function MatterDetailInner() {
                           headers: t ? { Authorization: `Bearer ${t}` } : {},
                           credentials: 'include',
                         });
-                        if (!res.ok) throw new Error(await res.text() || 'Download failed');
+                        if (!res.ok) throw new Error(await res.text() || label('fd_downloadFailed'));
                         const blob = await res.blob();
                         const url = URL.createObjectURL(blob);
                         const link = document.createElement('a');
@@ -692,13 +695,13 @@ function MatterDetailInner() {
                         link.download = a.fileName || 'attachment';
                         link.click();
                         URL.revokeObjectURL(url);
-                        toast.success('Download started');
+                        toast.success(label('fd_toastDownload'));
                       } catch (err) {
-                        toast.error(err instanceof Error ? err.message : 'Download failed');
+                        toast.error(err instanceof Error ? err.message : label('fd_downloadFailed'));
                       }
                     }}
                   >
-                    Download
+                    {label('download')}
                   </button>
                   <button
                     type="button"
@@ -714,28 +717,35 @@ function MatterDetailInner() {
                           await load();
                           if (r.ok) {
                             toast.success(
-                              `OCR complete (${r.method || 'ok'}) · ${r.chars || 0} characters`,
+                              tf(lang, 'fd_ocrDone', {
+                                method: r.method || 'ok',
+                                chars: r.chars || 0,
+                              }),
                             );
                           } else {
-                            toast.error(r.reason || 'OCR found no text');
+                            toast.error(r.reason || label('fd_ocrNoText'));
                           }
                         })
                         .catch((err) => {
-                          toast.error(err instanceof Error ? err.message : 'OCR failed');
+                          toast.error(err instanceof Error ? err.message : label('fd_ocrFailed'));
                         })
                         .finally(() => setOcrBusy(null));
                     }}
                   >
-                    {ocrBusy === a.id ? 'Running OCR…' : a.extractedText ? 'Re-run OCR' : 'Run OCR'}
+                    {ocrBusy === a.id
+                      ? label('fd_runningOcr')
+                      : a.extractedText
+                        ? label('fd_rerunOcr')
+                        : label('fd_runOcr')}
                   </button>
                 </div>
                 {a.extractedText ? (
                   <div className="ocr-extract-card">
                     <div className="doc-version-title" style={{ fontSize: '0.95rem' }}>
-                      OCR text layer
+                      {label('fd_ocrLayer')}
                     </div>
                     <div className="doc-version-reason muted" style={{ marginBottom: 8 }}>
-                      Also saved under Documents &amp; versions · use Re-run OCR after layout fix
+                      {label('fd_ocrSavedNote')}
                     </div>
                     <div className="doc-version-body">
                       {String(a.extractedText).slice(0, 12000)}
@@ -744,12 +754,12 @@ function MatterDetailInner() {
                   </div>
                 ) : (
                   <p className="muted" style={{ marginTop: 8 }}>
-                    No extracted text yet — use Run OCR for PDFs and images.
+                    {label('fd_noExtracted')}
                   </p>
                 )}
               </li>
             ))}
-            {!matter.attachments?.length && <li className="muted">No attachments</li>}
+            {!matter.attachments?.length && <li className="muted">{label('fd_noAttachments')}</li>}
           </ul>
           <form className="row" onSubmit={async (e: FormEvent) => {
             e.preventDefault();
@@ -766,64 +776,64 @@ function MatterDetailInner() {
               });
               if (!res.ok) throw new Error(await res.text());
               setFile(null);
-              toast.success('Uploaded');
+              toast.success(label('fd_uploaded'));
               notifyDataChanged();
               await load();
             } catch (err) {
-              toast.error(err instanceof Error ? err.message : 'Upload failed');
+              toast.error(err instanceof Error ? err.message : label('fd_uploadFailed'));
             }
           }}>
             <input type="file" onChange={(e) => setFile(e.target.files?.[0] || null)} />
-            <button className="btn primary" type="submit">Upload</button>
+            <button className="btn primary" type="submit">{label('upload')}</button>
           </form>
         </div>
       )}
 
       {tab === 'letters' && (
         <div className="panel">
-          <h2>Letters</h2>
+          <h2>{label('fd_lettersTitle')}</h2>
           <ul className="timeline">
             {(matter.letters || []).map((l: any) => (
               <li key={l.id}>
-                <strong>{l.recipient}</strong> — <span className={`badge ${l.status}`}>{l.status}</span>
+                <strong>{l.recipient}</strong> — <span className={`badge ${l.status}`}>{enumLabel(lang, l.status)}</span>
                 <div style={{ whiteSpace: 'pre-wrap', marginTop: 6 }}>{l.text}</div>
                 {l.status !== 'DISPATCHED' && (
                   <button
                     type="button"
                     className="btn"
                     style={{ marginTop: 8 }}
-                    onClick={() => run(() => api(`/files/letters/${l.id}/dispatch`, { method: 'POST' }), 'Letter dispatched')}
+                    onClick={() => run(() => api(`/files/letters/${l.id}/dispatch`, { method: 'POST' }), label('fd_toastDispatched'))}
                   >
-                    Dispatch
+                    {label('fd_dispatch')}
                   </button>
                 )}
               </li>
             ))}
-            {!matter.letters?.length && <li className="muted">No letters yet</li>}
+            {!matter.letters?.length && <li className="muted">{label('fd_noLetters')}</li>}
           </ul>
           <form className="grid-form" style={{ marginTop: 16 }} onSubmit={(e) => {
             e.preventDefault();
             run(async () => {
               await api(`/files/${id}/letters`, { method: 'POST', json: letter });
               setLetter({ recipient: '', text: '' });
-            }, 'Letter drafted');
+            }, label('fd_toastDrafted'));
           }}>
             <div className="field">
-              <label>Recipient</label>
+              <label>{label('fd_recipient')}</label>
               <input value={letter.recipient} onChange={(e) => setLetter({ ...letter, recipient: e.target.value })} required />
             </div>
             <div className="field">
-              <label>Text</label>
+              <label>{label('fd_text')}</label>
               <textarea rows={4} value={letter.text} onChange={(e) => setLetter({ ...letter, text: e.target.value })} required />
             </div>
-            <button className="btn primary" type="submit">Create letter</button>
+            <button className="btn primary" type="submit">{label('fd_createLetter')}</button>
           </form>
         </div>
       )}
 
       {tab === 'related' && (
         <div className="panel">
-          <h2>Related matters</h2>
+          <h2>{label('files_related')}</h2>
           <ul className="timeline">
             {(matter.relatedFrom || []).map((r: any) => (
               <li key={r.id}>
@@ -831,22 +841,22 @@ function MatterDetailInner() {
                 {r.toMatter?.id ? (
                   <div>
                     <a className="tiny-link" href={`/files/${r.toMatter.id}`}>
-                      Open →
+                      {label('fd_openArrow')}
                     </a>
                   </div>
                 ) : null}
               </li>
             ))}
-            {!matter.relatedFrom?.length && <li className="muted">No related links</li>}
+            {!matter.relatedFrom?.length && <li className="muted">{label('fd_noRelated')}</li>}
           </ul>
           <div className="field" style={{ marginTop: 16 }}>
-            <label>Search diary number or subject</label>
+            <label>{label('fd_searchRelated')}</label>
             <input
               value={relatedQuery}
               onChange={(e) => setRelatedQuery(e.target.value)}
-              placeholder="Type at least 2 characters…"
+              placeholder={label('fd_typeMin2')}
             />
-            {relatedBusy && <p className="muted">Searching…</p>}
+            {relatedBusy && <p className="muted">{label('fd_searching')}</p>}
           </div>
           {relatedHits.length > 0 && (
             <ul className="timeline" style={{ marginTop: 8 }}>
@@ -854,8 +864,8 @@ function MatterDetailInner() {
                 <li key={hit.id}>
                   <strong>{hit.diaryNo}</strong> — {hit.subject}
                   <div className="muted">
-                    {hit.classification || ''}
-                    {hit.status ? ` · ${String(hit.status).replace(/_/g, ' ')}` : ''}
+                    {hit.classification ? enumLabel(lang, hit.classification) : ''}
+                    {hit.status ? ` · ${enumLabel(lang, String(hit.status))}` : ''}
                   </div>
                   <button
                     type="button"
@@ -869,17 +879,17 @@ function MatterDetailInner() {
                         });
                         setRelatedQuery('');
                         setRelatedHits([]);
-                      }, 'Linked')
+                      }, label('fd_toastLinked'))
                     }
                   >
-                    Link this matter
+                    {label('fd_linkThis')}
                   </button>
                 </li>
               ))}
             </ul>
           )}
           {relatedQuery.trim().length >= 2 && !relatedBusy && relatedHits.length === 0 && (
-            <p className="muted">No matching matters you can see.</p>
+            <p className="muted">{label('fd_noMatching')}</p>
           )}
         </div>
       )}
@@ -888,10 +898,9 @@ function MatterDetailInner() {
         <div className="panel doc-versions">
           <div className="doc-versions-head">
             <div>
-              <h2 style={{ margin: 0 }}>Documents &amp; versions</h2>
+              <h2 style={{ margin: 0 }}>{label('fd_docsVersions')}</h2>
               <p className="muted" style={{ margin: '6px 0 0' }}>
-                The original text is preserved. Each working version has a reason, author, time and
-                fingerprint. Decisions cite the version used.
+                {label('fd_versionsHelp')}
               </p>
             </div>
             <button
@@ -903,12 +912,12 @@ function MatterDetailInner() {
                 (document.getElementById('version-reason-input') as HTMLInputElement | null)?.focus();
               }}
             >
-              + Add working version
+              {label('fd_addWorkingPlus')}
             </button>
           </div>
 
           {(matter.versions || []).length === 0 && (
-            <p className="muted">No document versions yet. Register text or run OCR on an attachment.</p>
+            <p className="muted">{label('fd_noVersions')}</p>
           )}
 
           {[...(matter.versions || [])]
@@ -918,12 +927,12 @@ function MatterDetailInner() {
                 new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
             )
             .map((v: any, idx: number) => {
-              const label =
+              const versionLabel =
                 v.kind === 'ORIGINAL'
-                  ? `V${idx + 1} · Original`
+                  ? tf(lang, 'fd_vOriginal', { n: idx + 1 })
                   : v.kind === 'OCR'
-                    ? `V${idx + 1} · OCR layer`
-                    : `V${idx + 1} · Working`;
+                    ? tf(lang, 'fd_vOcr', { n: idx + 1 })
+                    : tf(lang, 'fd_vWorking', { n: idx + 1 });
               const when = new Date(v.createdAt).toLocaleString(undefined, {
                 day: 'numeric',
                 month: 'short',
@@ -934,15 +943,15 @@ function MatterDetailInner() {
               return (
                 <article key={v.id} className="doc-version-card">
                   <header className="doc-version-meta">
-                    <div className="doc-version-title">{label}</div>
+                    <div className="doc-version-title">{versionLabel}</div>
                     <div className="doc-version-sub">
-                      <span>{v.author?.displayName || 'Officer'}</span>
+                      <span>{v.author?.displayName || label('officer')}</span>
                       <span aria-hidden>·</span>
                       <span>{when}</span>
                     </div>
                     {v.reason ? <div className="doc-version-reason">{v.reason}</div> : null}
                     {v.hash ? (
-                      <div className="doc-version-hash" title="SHA-256 fingerprint">
+                      <div className="doc-version-hash" title={label('fd_hashTitle')}>
                         {v.hash}
                       </div>
                     ) : null}
@@ -965,32 +974,32 @@ function MatterDetailInner() {
                 });
                 setVersionText('');
                 setVersionReason('');
-              }, 'Version saved');
+              }, label('fd_toastVersion'));
             }}
           >
-            <h3 style={{ margin: '0 0 8px' }}>Add working version</h3>
+            <h3 style={{ margin: '0 0 8px' }}>{label('fd_addWorking')}</h3>
             <div className="field">
-              <label>Reason</label>
+              <label>{label('reason')}</label>
               <input
                 id="version-reason-input"
                 value={versionReason}
                 onChange={(e) => setVersionReason(e.target.value)}
-                placeholder="e.g. Revised after Sec Gen note"
+                placeholder={label('fd_reasonPlaceholder')}
                 required
               />
             </div>
             <div className="field">
-              <label>Body text</label>
+              <label>{label('fd_bodyText')}</label>
               <textarea
                 rows={8}
                 value={versionText}
                 onChange={(e) => setVersionText(e.target.value)}
-                placeholder="Updated correspondence / OCR-corrected text"
+                placeholder={label('fd_bodyPlaceholder')}
                 required
               />
             </div>
             <button className="btn primary" type="submit">
-              Save working version
+              {label('fd_saveWorking')}
             </button>
           </form>
         </div>
@@ -1000,8 +1009,9 @@ function MatterDetailInner() {
 }
 
 export default function MatterDetailPage() {
+  const { label } = useAuth();
   return (
-    <Suspense fallback={<p className="muted">Loading matter…</p>}>
+    <Suspense fallback={<p className="muted">{label('fd_loadingMatter')}</p>}>
       <MatterDetailInner />
     </Suspense>
   );

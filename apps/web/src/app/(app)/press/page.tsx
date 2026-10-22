@@ -6,6 +6,7 @@ import { api } from '@/lib/api';
 import { useAuth } from '@/components/AuthProvider';
 import { useToast } from '@/components/Toast';
 import { useLiveRefresh, notifyDataChanged } from '@/lib/live-refresh';
+import { enumLabel, tf } from '@/lib/i18n';
 
 type MatterOpt = { id: string; diaryNo: string; subject: string };
 
@@ -66,10 +67,10 @@ const emptyForm = {
   embargoUntil: '',
 };
 
-function fmtDay(iso?: string | null) {
+function fmtDay(iso?: string | null, locale?: string) {
   if (!iso) return '—';
   return new Date(iso)
-    .toLocaleDateString(undefined, {
+    .toLocaleDateString(locale, {
       day: 'numeric',
       month: 'short',
       year: 'numeric',
@@ -77,9 +78,9 @@ function fmtDay(iso?: string | null) {
     .toUpperCase();
 }
 
-function fmtWhen(iso?: string | null) {
+function fmtWhen(iso?: string | null, locale?: string) {
   if (!iso) return '';
-  return new Date(iso).toLocaleString(undefined, {
+  return new Date(iso).toLocaleString(locale, {
     day: 'numeric',
     month: 'short',
     year: 'numeric',
@@ -88,16 +89,17 @@ function fmtWhen(iso?: string | null) {
   });
 }
 
-function statusLabel(s: string) {
-  if (s === 'APPROVED') return 'Approved';
-  if (s === 'DISPATCHED') return 'Dispatched';
-  if (s === 'SUBMITTED') return 'Awaiting approval';
-  if (s === 'REJECTED') return 'Rejected';
-  return 'Draft';
+function statusLabel(s: string, label: (k: string) => string) {
+  if (s === 'APPROVED') return label('approved');
+  if (s === 'DISPATCHED') return label('enum_DISPATCHED');
+  if (s === 'SUBMITTED') return label('spc_awaitingApproval');
+  if (s === 'REJECTED') return label('rejected');
+  return label('draft');
 }
 
 export default function PressPage() {
-  const { user } = useAuth();
+  const { user, label, lang } = useAuth();
+  const locale = lang === 'ur' ? 'ur-PK' : undefined;
   const toast = useToast();
   const [items, setItems] = useState<Press[]>([]);
   const [clips, setClips] = useState<Clip[]>([]);
@@ -201,13 +203,13 @@ export default function PressPage() {
           embargoUntil: form.embargoUntil || undefined,
         },
       });
-      toast.success('Press release drafted');
+      toast.success(label('prs_toastDrafted'));
       setShowForm(false);
       setForm(emptyForm);
       notifyDataChanged();
       await load();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Create failed');
+      toast.error(err instanceof Error ? err.message : label('createFailed'));
     } finally {
       setBusy(false);
     }
@@ -232,15 +234,15 @@ export default function PressPage() {
       });
       toast.success(
         extra?.markHumanReviewed
-          ? 'Human review recorded'
+          ? label('spc_toastReviewed')
           : extra?.socialApproved
-            ? 'Social channels marked approved'
-            : 'Release saved',
+            ? label('prs_toastSocial')
+            : label('prs_toastSaved'),
       );
       notifyDataChanged();
       await load();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Save failed');
+      toast.error(err instanceof Error ? err.message : label('saveFailed'));
     } finally {
       setBusy(false);
     }
@@ -259,19 +261,19 @@ export default function PressPage() {
       });
       toast.success(
         status === 'APPROVED'
-          ? 'Authorized for PID wire'
+          ? label('prs_toastAuthorized')
           : status === 'DISPATCHED'
-            ? 'Dispatched to media'
+            ? label('prs_toastDispatched')
             : status === 'SUBMITTED'
-              ? 'Submitted for authorization'
+              ? label('spc_toastSubmitted')
               : status === 'REJECTED'
-                ? 'Returned for revision'
-                : 'Status updated',
+                ? label('prs_toastReturned')
+                : label('spc_toastStatus'),
       );
       notifyDataChanged();
       await load();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Update failed');
+      toast.error(err instanceof Error ? err.message : label('prs_updateFailed'));
     } finally {
       setBusy(false);
     }
@@ -295,9 +297,9 @@ Human review is mandatory before official use. Working title: ${title}. Notes:\n
         },
       });
       const text = res.answer || '';
-      const grab = (label: string) => {
+      const grab = (tag: string) => {
         const m = text.match(
-          new RegExp(`${label}:\\s*([\\s\\S]*?)(?=\\n(?:EN_|UR_)[A-Z]+:|$)`, 'i'),
+          new RegExp(`${tag}:\\s*([\\s\\S]*?)(?=\\n(?:EN_|UR_)[A-Z]+:|$)`, 'i'),
         );
         return (m?.[1] || '').trim();
       };
@@ -322,9 +324,9 @@ Human review is mandatory before official use. Working title: ${title}. Notes:\n
         notifyDataChanged();
         await load();
       }
-      toast.success('AI draft inserted — mark human review before submit');
+      toast.success(label('spc_toastAiInserted'));
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'AI draft unavailable');
+      toast.error(err instanceof Error ? err.message : label('spc_aiUnavailable'));
     } finally {
       setAiBusy(false);
     }
@@ -343,7 +345,7 @@ Human review is mandatory before official use. Working title: ${title}. Notes:\n
           note: clipForm.note || undefined,
         },
       });
-      toast.success('Media clipping recorded');
+      toast.success(label('prs_toastClip'));
       setShowClipForm(false);
       setClipForm({
         outlet: '',
@@ -356,7 +358,7 @@ Human review is mandatory before official use. Working title: ${title}. Notes:\n
       notifyDataChanged();
       await load();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Clip failed');
+      toast.error(err instanceof Error ? err.message : label('prs_clipFailed'));
     } finally {
       setBusy(false);
     }
@@ -372,17 +374,17 @@ Human review is mandatory before official use. Working title: ${title}. Notes:\n
       <div className="overview-hero">
         <div>
           <div className="eyebrow">
-            {user?.role === 'SPEAKER' ? "SPEAKER'S OFFICE" : 'OFFICE WORKFLOW'} · MEDIA
+            {user?.role === 'SPEAKER' ? label('hero_speakerOffice') : label('hero_officeWorkflow')} ·{' '}
+            {label('prs_eyebrowMedia')}
           </div>
-          <h1>Press releases &amp; media monitoring</h1>
+          <h1>{label('prs_title')}</h1>
           <p className="muted">
-            Consultation §3.5 — bilingual press releases, PID wire distribution, approved social
-            channel review, and media pickup monitoring with human control of AI drafts.
+            {label('prs_heroSub')}
           </p>
         </div>
         <div className="press-hero-actions">
           <button type="button" className="btn primary" onClick={() => setShowForm((v) => !v)}>
-            {showForm ? 'Close form' : '+ Issue press release'}
+            {showForm ? label('mtg_closeForm') : label('prs_issue')}
           </button>
           <button
             type="button"
@@ -392,7 +394,7 @@ Human review is mandatory before official use. Working title: ${title}. Notes:\n
               setTab('monitor');
             }}
           >
-            Daily media digest
+            {label('prs_digest')}
           </button>
         </div>
       </div>
@@ -403,46 +405,46 @@ Human review is mandatory before official use. Working title: ${title}. Notes:\n
           className={tab === 'releases' ? 'active' : ''}
           onClick={() => setTab('releases')}
         >
-          Press releases · {items.length}
+          {label('prs_tabReleases')} · {items.length}
         </button>
         <button
           type="button"
           className={tab === 'monitor' ? 'active' : ''}
           onClick={() => setTab('monitor')}
         >
-          Media monitoring · {clips.length}
+          {label('prs_tabMonitor')} · {clips.length}
         </button>
       </div>
 
       <div className="press-kpis">
         <div className="press-kpi">
-          <div className="label">Total releases</div>
+          <div className="label">{label('prs_kpiTotal')}</div>
           <div className="value">{kpis.total}</div>
-          <div className="hint">Official media records</div>
+          <div className="hint">{label('prs_kpiTotalHint')}</div>
         </div>
         <div className="press-kpi">
-          <div className="label">In review</div>
+          <div className="label">{label('prs_kpiReview')}</div>
           <div className="value">{kpis.submitted}</div>
-          <div className="hint">Submitted for authorization</div>
+          <div className="hint">{label('prs_kpiReviewHint')}</div>
         </div>
         <div className="press-kpi">
-          <div className="label">Staff drafts</div>
+          <div className="label">{label('prs_kpiDrafts')}</div>
           <div className="value">{kpis.drafts}</div>
-          <div className="hint">Draft / rejected</div>
+          <div className="hint">{label('prs_kpiDraftsHint')}</div>
         </div>
         <div className="press-kpi">
-          <div className="label">Dispatched</div>
+          <div className="label">{label('enum_DISPATCHED')}</div>
           <div className="value">{kpis.dispatched}</div>
-          <div className="hint">On PID / social wire</div>
+          <div className="hint">{label('prs_kpiDispHint')}</div>
         </div>
       </div>
 
       {showForm ? (
         <div className="panel">
-          <h2>Issue press release</h2>
+          <h2>{label('prs_issueTitle')}</h2>
           <form className="grid-form" onSubmit={create}>
             <label>
-              English headline
+              {label('prs_enHeadline')}
               <input
                 value={form.title}
                 onChange={(e) => setForm({ ...form, title: e.target.value })}
@@ -451,7 +453,7 @@ Human review is mandatory before official use. Working title: ${title}. Notes:\n
               />
             </label>
             <label>
-              Urdu headline
+              {label('prs_urHeadline')}
               <input
                 value={form.titleUr}
                 onChange={(e) => setForm({ ...form, titleUr: e.target.value })}
@@ -459,12 +461,12 @@ Human review is mandatory before official use. Working title: ${title}. Notes:\n
               />
             </label>
             <label>
-              Source matter
+              {label('spc_sourceMatter')}
               <select
                 value={form.matterId}
                 onChange={(e) => setForm({ ...form, matterId: e.target.value })}
               >
-                <option value="">None</option>
+                <option value="">{label('none')}</option>
                 {matters.map((m) => (
                   <option key={m.id} value={m.id}>
                     {m.diaryNo} — {m.subject}
@@ -473,7 +475,7 @@ Human review is mandatory before official use. Working title: ${title}. Notes:\n
               </select>
             </label>
             <label>
-              Embargo until (optional)
+              {label('prs_embargoOpt')}
               <input
                 type="datetime-local"
                 value={form.embargoUntil}
@@ -481,7 +483,7 @@ Human review is mandatory before official use. Working title: ${title}. Notes:\n
               />
             </label>
             <label>
-              English version
+              {label('prs_enVersion')}
               <textarea
                 rows={5}
                 value={form.body}
@@ -491,7 +493,7 @@ Human review is mandatory before official use. Working title: ${title}. Notes:\n
               />
             </label>
             <label>
-              Urdu version
+              {label('prs_urVersion')}
               <textarea
                 rows={5}
                 value={form.bodyUr}
@@ -500,21 +502,21 @@ Human review is mandatory before official use. Working title: ${title}. Notes:\n
               />
             </label>
             <label>
-              Distribution wire
+              {label('prs_distWire')}
               <input
                 value={form.wire}
                 onChange={(e) => setForm({ ...form, wire: e.target.value })}
               />
             </label>
             <label>
-              Social channels (for approved review)
+              {label('prs_socialChannels')}
               <input
                 value={form.socialTargets}
                 onChange={(e) => setForm({ ...form, socialTargets: e.target.value })}
               />
             </label>
             <label>
-              Source citations
+              {label('spc_sourceCitations')}
               <input
                 value={form.sourcesNote}
                 onChange={(e) => setForm({ ...form, sourcesNote: e.target.value })}
@@ -522,10 +524,10 @@ Human review is mandatory before official use. Working title: ${title}. Notes:\n
             </label>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <button type="submit" className="btn primary" disabled={busy}>
-                Save draft
+                {label('prs_saveDraft')}
               </button>
               <button type="button" className="btn" disabled={aiBusy} onClick={aiDraft}>
-                {aiBusy ? 'Drafting…' : 'AI assist draft'}
+                {aiBusy ? label('spc_drafting') : label('prs_aiAssistDraft')}
               </button>
             </div>
           </form>
@@ -542,25 +544,25 @@ Human review is mandatory before official use. Working title: ${title}. Notes:\n
                 className={`btn ${filter === f ? 'primary' : ''}`}
                 onClick={() => setFilter(f)}
               >
-                {f === 'ALL' ? 'All' : statusLabel(f)}
+                {f === 'ALL' ? label('all') : statusLabel(f, label)}
               </button>
             ))}
           </div>
           <div className="press-feed">
             {visible.length === 0 ? (
               <div className="panel">
-                <p className="muted">No press releases in this filter.</p>
+                <p className="muted">{label('prs_noneInFilter')}</p>
               </div>
             ) : (
               visible.map((p) => (
                 <article key={p.id} className="press-card">
                   <div className="press-card-top">
                     <div className="press-card-id">
-                      {p.code || `PR-${p.id.slice(0, 4)}`} · PID REF: {p.pidRef || '—'} ·{' '}
-                      {fmtDay(p.createdAt)}
+                      {p.code || `PR-${p.id.slice(0, 4)}`} · {label('prs_pidRef')}: {p.pidRef || '—'} ·{' '}
+                      {fmtDay(p.createdAt, locale)}
                     </div>
                     <span className={`press-status ${p.status.toLowerCase()}`}>
-                      {statusLabel(p.status)}
+                      {statusLabel(p.status, label)}
                     </span>
                   </div>
                   <h3>{p.title}</h3>
@@ -571,7 +573,7 @@ Human review is mandatory before official use. Working title: ${title}. Notes:\n
                   ) : null}
                   {p.matter ? (
                     <p className="muted tiny">
-                      Source:{' '}
+                      {label('prs_source')}:{' '}
                       <Link href={`/files/${p.matter.id}`}>
                         {p.matter.diaryNo} — {p.matter.subject}
                       </Link>
@@ -583,35 +585,35 @@ Human review is mandatory before official use. Working title: ${title}. Notes:\n
                       style={{ marginTop: 8 }}
                     >
                       {p.humanReviewedAt
-                        ? 'AI-assisted — human review recorded'
-                        : 'AI-assisted — human review required before submit'}
+                        ? label('prs_aiReviewed')
+                        : label('prs_aiReviewRequired')}
                     </div>
                   ) : null}
                   <div className="press-bilingual">
                     <div>
-                      <div className="eyebrow">English version</div>
+                      <div className="eyebrow">{label('prs_enVersion')}</div>
                       <p>{p.body}</p>
                     </div>
                     <div>
-                      <div className="eyebrow">Urdu version · اردو ورژن</div>
+                      <div className="eyebrow">{label('prs_urVersion')}</div>
                       <p dir="rtl">{p.bodyUr || '—'}</p>
                     </div>
                   </div>
                   <div className="press-meta muted">
-                    Author: {p.author?.displayName || '—'}
-                    {p.approvedAt ? ` · Approved ${fmtWhen(p.approvedAt)}` : ''}
-                    {p.dispatchedAt ? ` · Dispatched ${fmtWhen(p.dispatchedAt)}` : ''}
-                    {` · Wire: ${p.wire || DEFAULT_WIRE}`}
-                    {p.socialApproved ? ' · Social: approved' : ''}
-                    {p.embargoUntil ? ` · Embargo: ${fmtWhen(p.embargoUntil)}` : ''}
+                    {label('prs_author')}: {p.author?.displayName || '—'}
+                    {p.approvedAt ? ` · ${label('approved')} ${fmtWhen(p.approvedAt, locale)}` : ''}
+                    {p.dispatchedAt ? ` · ${label('enum_DISPATCHED')} ${fmtWhen(p.dispatchedAt, locale)}` : ''}
+                    {` · ${label('prs_wire')}: ${p.wire || DEFAULT_WIRE}`}
+                    {p.socialApproved ? ` · ${label('prs_socialApproved')}` : ''}
+                    {p.embargoUntil ? ` · ${label('prs_embargo')}: ${fmtWhen(p.embargoUntil, locale)}` : ''}
                   </div>
                   {p.rejectReason ? (
-                    <p className="muted tiny">Reject reason: {p.rejectReason}</p>
+                    <p className="muted tiny">{label('spc_rejectReason')}: {p.rejectReason}</p>
                   ) : null}
                   <div className="press-card-actions">
                     {p.status !== 'DISPATCHED' ? (
                       <button type="button" className="btn" onClick={() => setEditId(p.id)}>
-                        Edit / review
+                        {label('prs_editReview')}
                       </button>
                     ) : null}
                     {(p.status === 'DRAFT' || p.status === 'REJECTED') ? (
@@ -621,7 +623,7 @@ Human review is mandatory before official use. Working title: ${title}. Notes:\n
                         disabled={busy}
                         onClick={() => setStatus(p.id, 'SUBMITTED')}
                       >
-                        Submit for authorization
+                        {label('spc_submitAuth')}
                       </button>
                     ) : null}
                     {canAuthorize &&
@@ -634,7 +636,7 @@ Human review is mandatory before official use. Working title: ${title}. Notes:\n
                           setStatus(p.id, 'APPROVED', { socialApproved: true })
                         }
                       >
-                        ✓ Authorize for PID + social
+                        ✓ {label('prs_authorizePid')}
                       </button>
                     ) : null}
                     {canAuthorize && p.status === 'SUBMITTED' ? (
@@ -647,7 +649,7 @@ Human review is mandatory before official use. Working title: ${title}. Notes:\n
                             setEditId(p.id);
                             setRejectReason(e.target.value);
                           }}
-                          placeholder="Reject reason"
+                          placeholder={label('spc_rejectReason')}
                         />
                         <button
                           type="button"
@@ -655,7 +657,7 @@ Human review is mandatory before official use. Working title: ${title}. Notes:\n
                           disabled={busy || rejectReason.trim().length < 5 || editId !== p.id}
                           onClick={() => setStatus(p.id, 'REJECTED', { reason: rejectReason })}
                         >
-                          Reject
+                          {label('prs_reject')}
                         </button>
                       </>
                     ) : null}
@@ -666,11 +668,11 @@ Human review is mandatory before official use. Working title: ${title}. Notes:\n
                         disabled={busy}
                         onClick={() => setStatus(p.id, 'DISPATCHED')}
                       >
-                        Dispatch to PID →
+                        {label('prs_dispatch')}
                       </button>
                     ) : null}
                     <button type="button" className="btn" onClick={() => printPreview(p)}>
-                      Print preview
+                      {label('prs_printPreview')}
                     </button>
                   </div>
                 </article>
@@ -682,22 +684,22 @@ Human review is mandatory before official use. Working title: ${title}. Notes:\n
         <div className="panel">
           <div className="remote-section-head">
             <div>
-              <div className="eyebrow">Media monitoring feed</div>
+              <div className="eyebrow">{label('prs_feed')}</div>
               <h2 style={{ marginTop: 4, fontFamily: 'var(--font-display)', color: 'var(--pine)' }}>
-                Press clippings &amp; social pickup
+                {label('prs_clippings')}
               </h2>
             </div>
             <button type="button" className="btn primary" onClick={() => setShowClipForm((v) => !v)}>
-              {showClipForm ? 'Close' : '+ Log clipping'}
+              {showClipForm ? label('close') : label('prs_logClip')}
             </button>
           </div>
 
           {showDigest ? (
             <div className="press-digest">
-              <strong>Daily media digest</strong>
+              <strong>{label('prs_digest')}</strong>
               <p className="muted">
-                {kpis.dispatched} dispatched · {clips.length} clipping(s) · generated{' '}
-                {fmtWhen(new Date().toISOString())}
+                {tf(lang, 'prs_digestLine', { d: kpis.dispatched, c: clips.length })}{' '}
+                {fmtWhen(new Date().toISOString(), locale)}
               </p>
               <ul className="press-clips">
                 {items
@@ -709,8 +711,8 @@ Human review is mandatory before official use. Working title: ${title}. Notes:\n
                         {p.code} · {p.title}
                       </strong>
                       <div className="muted tiny">
-                        {p.pidRef} · {fmtWhen(p.dispatchedAt)} ·{' '}
-                        {p.socialApproved ? 'Social cleared' : 'Wire only'}
+                        {p.pidRef} · {fmtWhen(p.dispatchedAt, locale)} ·{' '}
+                        {p.socialApproved ? label('prs_socialCleared') : label('prs_wireOnly')}
                       </div>
                     </li>
                   ))}
@@ -721,36 +723,36 @@ Human review is mandatory before official use. Working title: ${title}. Notes:\n
           {showClipForm ? (
             <form className="grid-form" onSubmit={addClip} style={{ marginTop: 16 }}>
               <label>
-                Outlet
+                {label('prs_outlet')}
                 <input
                   value={clipForm.outlet}
                   onChange={(e) => setClipForm({ ...clipForm, outlet: e.target.value })}
                   required
-                  placeholder="APP / PTV / Dawn / X"
+                  placeholder={label('prs_outletPh')}
                 />
               </label>
               <label>
-                Platform
+                {label('prs_platform')}
                 <select
                   value={clipForm.platform}
                   onChange={(e) => setClipForm({ ...clipForm, platform: e.target.value })}
                 >
-                  <option value="WIRE">Wire</option>
-                  <option value="TV">TV</option>
-                  <option value="PRINT">Print</option>
-                  <option value="SOCIAL">Social</option>
-                  <option value="WEB">Web</option>
+                  <option value="WIRE">{label('enum_WIRE')}</option>
+                  <option value="TV">{label('enum_TV')}</option>
+                  <option value="PRINT">{label('enum_PRINT')}</option>
+                  <option value="SOCIAL">{label('enum_SOCIAL')}</option>
+                  <option value="WEB">{label('enum_WEB')}</option>
                 </select>
               </label>
               <label>
-                Linked release
+                {label('prs_linkedRelease')}
                 <select
                   value={clipForm.pressReleaseId}
                   onChange={(e) =>
                     setClipForm({ ...clipForm, pressReleaseId: e.target.value })
                   }
                 >
-                  <option value="">Unlinked</option>
+                  <option value="">{label('prs_unlinked')}</option>
                   {items
                     .filter((p) => p.status === 'DISPATCHED' || p.status === 'APPROVED')
                     .map((p) => (
@@ -761,7 +763,7 @@ Human review is mandatory before official use. Working title: ${title}. Notes:\n
                 </select>
               </label>
               <label>
-                Headline / post summary
+                {label('prs_headlinePost')}
                 <input
                   value={clipForm.headline}
                   onChange={(e) => setClipForm({ ...clipForm, headline: e.target.value })}
@@ -770,43 +772,43 @@ Human review is mandatory before official use. Working title: ${title}. Notes:\n
                 />
               </label>
               <label>
-                URL (optional)
+                {label('prs_urlOpt')}
                 <input
                   value={clipForm.url}
                   onChange={(e) => setClipForm({ ...clipForm, url: e.target.value })}
                 />
               </label>
               <label>
-                Note
+                {label('prs_note')}
                 <input
                   value={clipForm.note}
                   onChange={(e) => setClipForm({ ...clipForm, note: e.target.value })}
                 />
               </label>
               <button type="submit" className="btn primary" disabled={busy}>
-                Save clipping
+                {label('prs_saveClip')}
               </button>
             </form>
           ) : null}
 
           <ul className="press-clips" style={{ marginTop: 16 }}>
             {clips.length === 0 ? (
-              <li className="muted">No clippings yet. Log pickup after dispatch.</li>
+              <li className="muted">{label('prs_noClips')}</li>
             ) : (
               clips.map((c) => (
                 <li key={c.id}>
                   <div className="eyebrow">
-                    {c.outlet} · {c.platform || 'WIRE'}
+                    {c.outlet} · {enumLabel(lang, c.platform || 'WIRE')}
                     {c.pressRelease?.code ? ` · ${c.pressRelease.code}` : ''}
                   </div>
                   <strong>{c.headline}</strong>
                   <div className="muted tiny">
-                    {fmtWhen(c.observedAt)} · {c.note || '—'}
+                    {fmtWhen(c.observedAt, locale)} · {c.note || '—'}
                     {c.url ? (
                       <>
                         {' · '}
                         <a href={c.url} target="_blank" rel="noreferrer">
-                          Open
+                          {label('open')}
                         </a>
                       </>
                     ) : null}
@@ -824,30 +826,30 @@ Human review is mandatory before official use. Working title: ${title}. Notes:\n
             <div className="meet-section-head">
               <div>
                 <div className="eyebrow">
-                  {editing.code} · {statusLabel(editing.status)}
+                  {editing.code} · {statusLabel(editing.status, label)}
                 </div>
-                <h2>Edit press release</h2>
+                <h2>{label('prs_editTitle')}</h2>
               </div>
               <button type="button" className="btn" onClick={() => setEditId(null)}>
-                Close
+                {label('close')}
               </button>
             </div>
             {editing.aiAssisted ? (
               <div className={`speech-ai-banner ${editing.humanReviewedAt ? 'ok' : 'warn'}`}>
                 {editing.humanReviewedAt
-                  ? 'AI-assisted — human review recorded'
-                  : 'AI-assisted — mark human review before submit'}
+                  ? label('prs_aiReviewed')
+                  : label('prs_aiMarkReview')}
               </div>
             ) : null}
             <label className="speech-field">
-              English headline
+              {label('prs_enHeadline')}
               <input
                 value={form.title}
                 onChange={(e) => setForm({ ...form, title: e.target.value })}
               />
             </label>
             <label className="speech-field">
-              Urdu headline
+              {label('prs_urHeadline')}
               <input
                 value={form.titleUr}
                 onChange={(e) => setForm({ ...form, titleUr: e.target.value })}
@@ -855,7 +857,7 @@ Human review is mandatory before official use. Working title: ${title}. Notes:\n
               />
             </label>
             <label className="speech-field">
-              English body
+              {label('prs_enBody')}
               <textarea
                 rows={6}
                 value={form.body}
@@ -863,7 +865,7 @@ Human review is mandatory before official use. Working title: ${title}. Notes:\n
               />
             </label>
             <label className="speech-field">
-              Urdu body
+              {label('prs_urBody')}
               <textarea
                 rows={5}
                 value={form.bodyUr}
@@ -872,26 +874,26 @@ Human review is mandatory before official use. Working title: ${title}. Notes:\n
               />
             </label>
             <label className="speech-field">
-              Wire
+              {label('prs_wire')}
               <input
                 value={form.wire}
                 onChange={(e) => setForm({ ...form, wire: e.target.value })}
               />
             </label>
             <label className="speech-field">
-              Social targets
+              {label('prs_socialTargets')}
               <input
                 value={form.socialTargets}
                 onChange={(e) => setForm({ ...form, socialTargets: e.target.value })}
               />
             </label>
             <label className="speech-field">
-              Source matter
+              {label('spc_sourceMatter')}
               <select
                 value={form.matterId}
                 onChange={(e) => setForm({ ...form, matterId: e.target.value })}
               >
-                <option value="">None</option>
+                <option value="">{label('none')}</option>
                 {matters.map((m) => (
                   <option key={m.id} value={m.id}>
                     {m.diaryNo} — {m.subject}
@@ -900,7 +902,7 @@ Human review is mandatory before official use. Working title: ${title}. Notes:\n
               </select>
             </label>
             <label className="speech-field">
-              Embargo
+              {label('prs_embargo')}
               <input
                 type="datetime-local"
                 value={form.embargoUntil}
@@ -909,10 +911,10 @@ Human review is mandatory before official use. Working title: ${title}. Notes:\n
             </label>
             <div className="speech-drawer-actions">
               <button type="button" className="btn" disabled={busy} onClick={() => saveEdit()}>
-                Save
+                {label('save')}
               </button>
               <button type="button" className="btn" disabled={aiBusy} onClick={aiDraft}>
-                {aiBusy ? 'Drafting…' : 'AI assist'}
+                {aiBusy ? label('spc_drafting') : label('prs_aiAssist')}
               </button>
               {editing.aiAssisted && !editing.humanReviewedAt ? (
                 <button
@@ -921,7 +923,7 @@ Human review is mandatory before official use. Working title: ${title}. Notes:\n
                   disabled={busy}
                   onClick={() => saveEdit({ markHumanReviewed: true })}
                 >
-                  Mark human review
+                  {label('prs_markReview')}
                 </button>
               ) : null}
               <button
@@ -930,7 +932,7 @@ Human review is mandatory before official use. Working title: ${title}. Notes:\n
                 disabled={busy}
                 onClick={() => saveEdit({ socialApproved: true })}
               >
-                Approve social channels
+                {label('prs_approveSocial')}
               </button>
             </div>
           </aside>
@@ -942,7 +944,7 @@ Human review is mandatory before official use. Working title: ${title}. Notes:\n
           <h1>{preview.title}</h1>
           {preview.titleUr ? <h2 dir="rtl">{preview.titleUr}</h2> : null}
           <p className="muted">
-            {preview.code} · {preview.pidRef} · {fmtDay(preview.createdAt)}
+            {preview.code} · {preview.pidRef} · {fmtDay(preview.createdAt, locale)}
           </p>
           <p style={{ whiteSpace: 'pre-wrap' }}>{preview.body}</p>
           {preview.bodyUr ? (
@@ -951,7 +953,7 @@ Human review is mandatory before official use. Working title: ${title}. Notes:\n
             </p>
           ) : null}
           <button type="button" className="btn" onClick={() => setPreview(null)}>
-            Close preview
+            {label('prs_closePreview')}
           </button>
         </div>
       ) : null}

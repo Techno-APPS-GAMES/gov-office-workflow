@@ -6,6 +6,7 @@ import { api } from '@/lib/api';
 import { useAuth } from '@/components/AuthProvider';
 import { useToast } from '@/components/Toast';
 import { useLiveRefresh } from '@/lib/live-refresh';
+import { enumLabel, tf } from '@/lib/i18n';
 
 type ScheduleItem = {
   id: string;
@@ -98,26 +99,42 @@ function weekStart(anchor: Date) {
   return addDays(d, mondayOffset);
 }
 
-function fmtDayLabel(d: Date) {
-  return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+function fmtDayLabel(d: Date, locale?: string) {
+  return d.toLocaleDateString(locale, { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
-function fmtWeekday(d: Date) {
-  return d.toLocaleDateString(undefined, { weekday: 'short' });
+function fmtWeekday(d: Date, locale?: string) {
+  return d.toLocaleDateString(locale, { weekday: 'short' });
 }
 
-function fmtTime(iso: string) {
-  return new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+function fmtTime(iso: string, locale?: string) {
+  return new Date(iso).toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit' });
 }
 
-function fmtRange(start: string, end: string) {
+function fmtRange(start: string, end: string, locale?: string) {
   const s = new Date(start);
-  const date = s.toLocaleDateString(undefined, {
+  const date = s.toLocaleDateString(locale, {
     day: 'numeric',
     month: 'short',
     year: 'numeric',
   });
-  return `${date} · ${fmtTime(start)}–${fmtTime(end)}`;
+  return `${date} · ${fmtTime(start, locale)}–${fmtTime(end, locale)}`;
+}
+
+const KIND_KEYS: Record<string, string> = {
+  Diary: 'sch_kindDiary',
+  Meeting: 'sch_kindMeeting',
+  'Diary booking': 'mtg_et_diary',
+  'Meeting request': 'mtg_et_request',
+  Invitation: 'mtg_et_invitation',
+  'Official visitor': 'mtg_et_visitor',
+  Delegation: 'mtg_et_delegation',
+  'Walk-in': 'mtg_et_walkin',
+};
+
+function kindLabel(kind: string, label: (k: string) => string) {
+  const k = KIND_KEYS[kind];
+  return k ? label(k) : kind;
 }
 
 function toIcsDate(iso: string) {
@@ -154,7 +171,8 @@ function downloadIcs(rows: Engagement[]) {
 }
 
 export default function SchedulePage() {
-  const { user } = useAuth();
+  const { user, label, lang } = useAuth();
+  const locale = lang === 'ur' ? 'ur-PK' : undefined;
   const toast = useToast();
   const [tab, setTab] = useState<'diary' | 'tours'>('diary');
   const [anchor, setAnchor] = useState(() => startOfDay(new Date()));
@@ -208,7 +226,7 @@ export default function SchedulePage() {
         startAt: s.startAt,
         endAt: s.endAt,
         location: s.location || '—',
-        status: 'Confirmed',
+        status: 'CONFIRMED',
         kind: 'Diary',
       });
     }
@@ -224,7 +242,7 @@ export default function SchedulePage() {
         startAt: m.startAt,
         endAt: end,
         location: m.location || '—',
-        status: 'Confirmed',
+        status: 'CONFIRMED',
         kind: m.screeningNotes || 'Meeting',
       });
     }
@@ -240,8 +258,8 @@ export default function SchedulePage() {
   const weekLabel = useMemo(() => {
     const a = weekDays[0];
     const b = weekDays[6];
-    return `${fmtDayLabel(a)} – ${fmtDayLabel(b)}`;
-  }, [weekDays]);
+    return `${fmtDayLabel(a, locale)} – ${fmtDayLabel(b, locale)}`;
+  }, [weekDays, locale]);
 
   const byDay = useMemo(() => {
     return weekDays.map((day) => {
@@ -267,19 +285,19 @@ export default function SchedulePage() {
     for (const s of schedule.slice().reverse().slice(0, 5)) {
       rows.push({
         id: `s-${s.id}`,
-        text: `Diary engagement added: ${s.title}`,
+        text: `${label('sch_diaryAdded')}: ${s.title}`,
         when: s.createdAt || s.startAt,
       });
     }
     for (const m of meetings.filter((x) => x.status === 'APPROVED').slice(0, 5)) {
       rows.push({
         id: `m-${m.id}`,
-        text: `Meeting confirmed on diary: ${m.title}`,
+        text: `${label('sch_meetingOnDiary')}: ${m.title}`,
         when: m.startAt || new Date().toISOString(),
       });
     }
     return rows.slice(0, 8);
-  }, [schedule, meetings]);
+  }, [schedule, meetings, label]);
 
   async function create(e: FormEvent, force = false) {
     e.preventDefault();
@@ -295,7 +313,7 @@ export default function SchedulePage() {
           force,
         },
       });
-      toast.success(force ? 'Engagement added (conflict overridden)' : 'Engagement added to diary');
+      toast.success(force ? label('sch_toastAddedForced') : label('sch_toastAdded'));
       setShowForm(false);
       setConflictInfo(null);
       setForm({ title: '', startAt: '', endAt: '', location: '' });
@@ -313,9 +331,9 @@ export default function SchedulePage() {
           conflicts: pe.payload.conflicts || [],
           alternatives: pe.payload.alternatives || [],
         });
-        toast.error('Schedule conflict — pick an alternative or force-book');
+        toast.error(label('sch_toastConflict'));
       } else {
-        toast.error(err instanceof Error ? err.message : 'Create failed');
+        toast.error(err instanceof Error ? err.message : label('createFailed'));
       }
     } finally {
       setBusy(false);
@@ -327,12 +345,14 @@ export default function SchedulePage() {
       <div className="overview-hero">
         <div>
           <div className="eyebrow">
-            {user?.role === 'SPEAKER' ? "SPEAKER'S OFFICE" : 'OFFICE WORKFLOW'} · CONCEPT DEMO
+            {user?.role === 'SPEAKER' ? label('hero_speakerOffice') : label('hero_officeWorkflow')} ·{' '}
+            {label('hero_conceptDemo')}
           </div>
-          <h1>Official schedule</h1>
+          <h1>{label('sch_title')}</h1>
           <p className="muted">
-            The diary shows confirmed meetings and other engagements. Request and review meetings in{' '}
-            <Link href="/meetings">Meetings</Link>.
+            {label('sch_heroSub')}{' '}
+            <Link href="/meetings">{label('meetings')}</Link>
+            {label('sch_heroSubEnd')}
           </p>
         </div>
         <div className="sched-hero-actions">
@@ -344,23 +364,23 @@ export default function SchedulePage() {
               briefRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
             }}
           >
-            Daily brief
+            {label('sch_dailyBrief')}
           </button>
           <button
             type="button"
             className="btn"
             onClick={() => {
               downloadIcs(engagements);
-              toast.success('Calendar file downloaded');
+              toast.success(label('sch_toastIcs'));
             }}
           >
-            ⬇ Calendar file
+            ⬇ {label('sch_calendarFile')}
           </button>
           <Link href="/meetings" className="btn">
-            Book meeting
+            {label('sch_bookMeeting')}
           </Link>
           <button type="button" className="btn primary" onClick={() => setShowForm((v) => !v)}>
-            {showForm ? 'Close form' : '+ New engagement'}
+            {showForm ? label('mtg_closeForm') : label('sch_newEngagement')}
           </button>
         </div>
       </div>
@@ -371,23 +391,23 @@ export default function SchedulePage() {
           className={tab === 'diary' ? 'active' : ''}
           onClick={() => setTab('diary')}
         >
-          📅 Daily Diary &amp; Calendar
+          📅 {label('sch_tabDiary')}
         </button>
         <button
           type="button"
           className={tab === 'tours' ? 'active' : ''}
           onClick={() => setTab('tours')}
         >
-          ✈ Tour Programmes &amp; State Visits ({TOURS.length})
+          ✈ {label('sch_tabTours')} ({TOURS.length})
         </button>
       </div>
 
       {showForm ? (
         <div className="panel">
-          <h2>New diary engagement</h2>
+          <h2>{label('sch_newDiaryTitle')}</h2>
           <form className="grid-form" onSubmit={create}>
             <label>
-              Title
+              {label('title')}
               <input
                 value={form.title}
                 onChange={(e) => setForm({ ...form, title: e.target.value })}
@@ -395,7 +415,7 @@ export default function SchedulePage() {
               />
             </label>
             <label>
-              Start
+              {label('mtg_start')}
               <input
                 type="datetime-local"
                 value={form.startAt}
@@ -404,7 +424,7 @@ export default function SchedulePage() {
               />
             </label>
             <label>
-              End
+              {label('mtg_end')}
               <input
                 type="datetime-local"
                 value={form.endAt}
@@ -413,29 +433,29 @@ export default function SchedulePage() {
               />
             </label>
             <label>
-              Location
+              {label('mtg_location')}
               <input
                 value={form.location}
                 onChange={(e) => setForm({ ...form, location: e.target.value })}
               />
             </label>
             <button type="submit" className="btn primary" disabled={busy}>
-              Add to diary
+              {label('sch_addToDiary')}
             </button>
           </form>
           {conflictInfo ? (
             <div className="sched-conflict" style={{ marginTop: 16 }}>
-              <h3 style={{ margin: '0 0 8px', color: 'var(--pine)' }}>Conflict detected</h3>
+              <h3 style={{ margin: '0 0 8px', color: 'var(--pine)' }}>{label('sch_conflictDetected')}</h3>
               <ul className="muted" style={{ margin: '0 0 12px', paddingLeft: 18 }}>
                 {conflictInfo.conflicts.map((c) => (
                   <li key={c.id}>
-                    {c.title} · {fmtRange(c.startAt, c.endAt)} ({c.source})
+                    {c.title} · {fmtRange(c.startAt, c.endAt, locale)} ({c.source})
                   </li>
                 ))}
               </ul>
               {conflictInfo.alternatives.length ? (
                 <>
-                  <div className="eyebrow">Suggested alternatives</div>
+                  <div className="eyebrow">{label('sch_suggestedAlt')}</div>
                   <div className="row" style={{ flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
                     {conflictInfo.alternatives.map((a) => (
                       <button
@@ -454,7 +474,7 @@ export default function SchedulePage() {
                             endAt: toLocal(a.endAt),
                           }));
                           setConflictInfo(null);
-                          toast.success(`Slot set: ${a.label}`);
+                          toast.success(`${label('sch_slotSet')}: ${a.label}`);
                         }}
                       >
                         {a.label}
@@ -463,7 +483,7 @@ export default function SchedulePage() {
                   </div>
                 </>
               ) : (
-                <p className="muted">No free slots found in the next few days.</p>
+                <p className="muted">{label('sch_noFreeSlots')}</p>
               )}
               <button
                 type="button"
@@ -472,7 +492,7 @@ export default function SchedulePage() {
                 disabled={busy}
                 onClick={(ev) => create(ev as unknown as FormEvent, true)}
               >
-                Force book anyway
+                {label('sch_forceBook')}
               </button>
             </div>
           ) : null}
@@ -484,7 +504,7 @@ export default function SchedulePage() {
           <div className="panel sched-week-panel">
             <div className="sched-week-head">
               <div>
-                <div className="eyebrow">Seven-day diary</div>
+                <div className="eyebrow">{label('sch_sevenDay')}</div>
                 <h2>{weekLabel}</h2>
               </div>
               <div className="sched-week-nav">
@@ -493,21 +513,21 @@ export default function SchedulePage() {
                   className="btn"
                   onClick={() => setAnchor(addDays(weekStart(anchor), -7))}
                 >
-                  Previous
+                  {label('previous')}
                 </button>
                 <button
                   type="button"
                   className="btn"
                   onClick={() => setAnchor(startOfDay(new Date()))}
                 >
-                  Today
+                  {label('sch_today')}
                 </button>
                 <button
                   type="button"
                   className="btn"
                   onClick={() => setAnchor(addDays(weekStart(anchor), 7))}
                 >
-                  Next
+                  {label('next')}
                 </button>
               </div>
             </div>
@@ -517,23 +537,25 @@ export default function SchedulePage() {
                 return (
                   <div key={day.toISOString()} className={`sched-day ${isToday ? 'today' : ''}`}>
                     <div className="sched-day-head">
-                      <strong>{fmtWeekday(day)}</strong>
-                      <span>{fmtDayLabel(day)}</span>
+                      <strong>{fmtWeekday(day, locale)}</strong>
+                      <span>{fmtDayLabel(day, locale)}</span>
                     </div>
                     <div className="sched-day-count">
-                      {items.length} booking{items.length === 1 ? '' : 's'}
+                      {items.length === 1
+                        ? label('sch_oneBooking')
+                        : tf(lang, 'sch_nBookings', { n: items.length })}
                     </div>
                     {items.length === 0 ? (
-                      <p className="muted tiny">No engagements</p>
+                      <p className="muted tiny">{label('sch_noEngagements')}</p>
                     ) : (
                       <ul className="sched-day-list">
                         {items.map((e) => (
                           <li key={`${e.source}-${e.id}`}>
                             <button type="button" onClick={() => setSelected(e)}>
-                              <strong>{fmtTime(e.startAt)}</strong>
+                              <strong>{fmtTime(e.startAt, locale)}</strong>
                               <span>{e.title}</span>
                               <em>
-                                {e.kind} · {e.location}
+                                {kindLabel(e.kind, label)} · {e.location}
                               </em>
                             </button>
                           </li>
@@ -548,12 +570,12 @@ export default function SchedulePage() {
 
           <div className="sched-split">
             <div className="panel">
-              <div className="eyebrow">Upcoming engagements</div>
+              <div className="eyebrow">{label('sch_upcoming')}</div>
               <h2 style={{ marginTop: 4, fontFamily: 'var(--font-display)', color: 'var(--pine)' }}>
-                Chronological order
+                {label('sch_chrono')}
               </h2>
               {upcoming.length === 0 ? (
-                <p className="muted">No upcoming diary bookings.</p>
+                <p className="muted">{label('sch_noUpcoming')}</p>
               ) : (
                 <ul className="sched-upcoming">
                   {upcoming.map((e) => (
@@ -561,13 +583,13 @@ export default function SchedulePage() {
                       <div>
                         <strong>{e.title}</strong>
                         <div className="muted">
-                          {fmtRange(e.startAt, e.endAt)} · {e.location}
+                          {fmtRange(e.startAt, e.endAt, locale)} · {e.location}
                         </div>
                       </div>
                       <div className="sched-upcoming-right">
-                        <span className="sched-confirmed">{e.status}</span>
+                        <span className="sched-confirmed">{enumLabel(lang, e.status)}</span>
                         <button type="button" className="btn" onClick={() => setSelected(e)}>
-                          View
+                          {label('view')}
                         </button>
                       </div>
                     </li>
@@ -577,18 +599,18 @@ export default function SchedulePage() {
             </div>
 
             <div className="panel sched-brief-panel" ref={briefRef}>
-              <div className="eyebrow">Daily briefing</div>
+              <div className="eyebrow">{label('sch_dailyBriefing')}</div>
               <h2 style={{ marginTop: 4, fontFamily: 'var(--font-display)', color: 'var(--pine)' }}>
-                Tomorrow at a glance
+                {label('sch_tomorrow')}
               </h2>
-              <p className="muted tiny">{fmtDayLabel(tomorrow)}</p>
+              <p className="muted tiny">{fmtDayLabel(tomorrow, locale)}</p>
               {tomorrowItems.length === 0 ? (
-                <p className="muted">No engagements tomorrow.</p>
+                <p className="muted">{label('sch_noTomorrow')}</p>
               ) : (
                 <ul className="sched-brief-list">
                   {tomorrowItems.map((e) => (
                     <li key={`${e.source}-${e.id}`}>
-                      <strong>{fmtTime(e.startAt)}</strong>
+                      <strong>{fmtTime(e.startAt, locale)}</strong>
                       <span>{e.title}</span>
                     </li>
                   ))}
@@ -596,16 +618,16 @@ export default function SchedulePage() {
               )}
               <div className="sched-brief-kpis">
                 <div>
-                  <span>Open directions</span>
+                  <span>{label('overview_directionsOpen')}</span>
                   <strong>{openDirections}</strong>
                 </div>
                 <div>
-                  <span>Requests awaiting approval</span>
+                  <span>{label('sch_requestsAwaiting')}</span>
                   <strong>{pendingMeetings}</strong>
                 </div>
               </div>
               <Link href="/meetings" className="btn" style={{ marginTop: 12 }}>
-                Open meetings desk
+                {label('sch_openMeetingsDesk')}
               </Link>
             </div>
           </div>
@@ -616,19 +638,19 @@ export default function SchedulePage() {
               className="sched-changes-toggle"
               onClick={() => setShowChanges((v) => !v)}
             >
-              <span>Recent schedule changes · {recentChanges.length}</span>
+              <span>{label('sch_recentChanges')} · {recentChanges.length}</span>
               <span aria-hidden>{showChanges ? '▴' : '▾'}</span>
             </button>
             {showChanges ? (
               <ul className="sched-changes">
                 {recentChanges.length === 0 ? (
-                  <li className="muted">No recent diary changes.</li>
+                  <li className="muted">{label('sch_noChanges')}</li>
                 ) : (
                   recentChanges.map((c) => (
                     <li key={c.id}>
                       <strong>{c.text}</strong>
                       <span className="muted">
-                        {new Date(c.when).toLocaleString(undefined, {
+                        {new Date(c.when).toLocaleString(locale, {
                           day: 'numeric',
                           month: 'short',
                           hour: 'numeric',
@@ -644,18 +666,19 @@ export default function SchedulePage() {
         </>
       ) : (
         <div className="panel">
-          <div className="eyebrow">Tour programmes &amp; state visits</div>
+          <div className="eyebrow">{label('sch_tabTours')}</div>
           <h2 style={{ marginTop: 4, fontFamily: 'var(--font-display)', color: 'var(--pine)' }}>
-            Planned programmes
+            {label('sch_planned')}
           </h2>
           <ul className="sched-tours">
             {TOURS.map((t) => (
               <li key={t.id}>
-                <strong>{t.title}</strong>
+                <strong>{label(`sch_${t.id.replace('-', '')}_title`)}</strong>
                 <div className="muted">
-                  {t.when} · {t.place}
+                  {label(`sch_${t.id.replace('-', '')}_when`)} ·{' '}
+                  {label(`sch_${t.id.replace('-', '')}_place`)}
                 </div>
-                <p>{t.note}</p>
+                <p>{label(`sch_${t.id.replace('-', '')}_note`)}</p>
               </li>
             ))}
           </ul>
@@ -667,34 +690,34 @@ export default function SchedulePage() {
           <aside className="meet-drawer" onClick={(e) => e.stopPropagation()}>
             <div className="meet-section-head">
               <div>
-                <div className="eyebrow">{selected.kind}</div>
+                <div className="eyebrow">{kindLabel(selected.kind, label)}</div>
                 <h2>{selected.title}</h2>
               </div>
               <button type="button" className="btn" onClick={() => setSelected(null)}>
-                Close
+                {label('close')}
               </button>
             </div>
             <div className="meet-detail-grid">
               <div>
-                <span>When</span>
-                <strong>{fmtRange(selected.startAt, selected.endAt)}</strong>
+                <span>{label('sch_when')}</span>
+                <strong>{fmtRange(selected.startAt, selected.endAt, locale)}</strong>
               </div>
               <div>
-                <span>Location</span>
+                <span>{label('mtg_location')}</span>
                 <strong>{selected.location}</strong>
               </div>
               <div>
-                <span>Status</span>
-                <strong>{selected.status}</strong>
+                <span>{label('status')}</span>
+                <strong>{enumLabel(lang, selected.status)}</strong>
               </div>
               <div>
-                <span>Source</span>
-                <strong>{selected.source === 'meeting' ? 'Meetings desk' : 'Diary engagement'}</strong>
+                <span>{label('sch_source')}</span>
+                <strong>{selected.source === 'meeting' ? label('sch_srcMeetings') : label('sch_srcDiary')}</strong>
               </div>
             </div>
             {selected.source === 'meeting' ? (
               <Link href="/meetings" className="btn primary">
-                Open in Meetings
+                {label('sch_openInMeetings')}
               </Link>
             ) : null}
           </aside>

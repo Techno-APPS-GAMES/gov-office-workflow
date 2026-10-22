@@ -6,6 +6,7 @@ import { api } from '@/lib/api';
 import { useAuth } from '@/components/AuthProvider';
 import { useToast } from '@/components/Toast';
 import { useLiveRefresh } from '@/lib/live-refresh';
+import { enumLabel, tf } from '@/lib/i18n';
 
 type VaultMatter = {
   id: string;
@@ -35,15 +36,8 @@ type Ledger = {
   saltBytes: number;
 };
 
-function prettyStatus(s: string) {
-  return s
-    .replace(/_/g, ' ')
-    .toLowerCase()
-    .replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
 export default function VaultPage() {
-  const { user } = useAuth();
+  const { user, lang, label } = useAuth();
   const toast = useToast();
   const [items, setItems] = useState<VaultMatter[]>([]);
   const [events, setEvents] = useState<VaultEvent[]>([]);
@@ -92,12 +86,12 @@ export default function VaultPage() {
         method: 'POST',
         json: { password },
       });
-      toast.success('Vault unlocked');
+      toast.success(label('files_unlocked'));
       setUnlockId(null);
       setPassword('');
       await load();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Unlock failed');
+      toast.error(err instanceof Error ? err.message : label('cm_unlockFailed'));
     } finally {
       setBusy(false);
     }
@@ -106,10 +100,10 @@ export default function VaultPage() {
   async function lock(matterId: string) {
     try {
       await api(`/vault/${matterId}/lock`, { method: 'POST' });
-      toast.success('Vault locked');
+      toast.success(label('vt_toastLocked'));
       await load();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Lock failed');
+      toast.error(err instanceof Error ? err.message : label('vt_lockFailed'));
     }
   }
 
@@ -118,9 +112,9 @@ export default function VaultPage() {
     try {
       const v = await api<Ledger>('/vault/verify');
       setLedger(v);
-      toast.success(v.valid ? 'Ledger verified — chain intact' : 'Ledger integrity check failed');
+      toast.success(v.valid ? label('vt_ledgerOk') : label('vt_ledgerBad'));
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Verify failed');
+      toast.error(err instanceof Error ? err.message : label('vt_verifyFailed'));
     } finally {
       setBusy(false);
     }
@@ -131,58 +125,53 @@ export default function VaultPage() {
       <div className="overview-hero">
         <div>
           <div className="eyebrow">
-            {user?.role === 'SPEAKER' ? "SPEAKER'S OFFICE" : 'OFFICE WORKFLOW'} · CONCEPT DEMO
+            {user?.role === 'SPEAKER' ? label('cm_speakerOffice') : label('cm_officeWorkflow')} ·{' '}
+            {label('cm_conceptDemo')}
           </div>
-          <h1>Confidential vault & keystore</h1>
-          <p className="muted">
-            High-security zero-knowledge enclave for classified files, password rotation, and
-            physical courier handoffs.
-          </p>
+          <h1>{label('vt_title')}</h1>
+          <p className="muted">{label('vt_heroBody')}</p>
         </div>
         <button type="button" className="btn primary" onClick={verifyLedger} disabled={busy}>
-          Verify ledger
+          {label('vt_verifyLedger')}
         </button>
       </div>
 
       <div className="vault-crypto-banner">
         <div className="vault-crypto-top">
           <div>
-            <div className="vault-crypto-kicker">Zero-knowledge cryptographic vault</div>
-            <h2>Hardware-isolated on-premises keystore</h2>
-            <p>
-              File contents are sealed under PBKDF2 / AES-256 keys derived from the file password.
-              Passwords never leave the local enclave and are never stored in clear text.
-            </p>
+            <div className="vault-crypto-kicker">{label('vt_kicker')}</div>
+            <h2>{label('vt_bannerTitle')}</h2>
+            <p>{label('vt_bannerBody')}</p>
           </div>
-          <span className="vault-aes-badge">AES-256 ENFORCED</span>
+          <span className="vault-aes-badge">{label('vt_aesBadge')}</span>
         </div>
         <div className="vault-crypto-grid">
           <div>
-            <span>Key derivation</span>
-            <strong>PBKDF2 · 100,000 iterations</strong>
+            <span>{label('vt_kdf')}</span>
+            <strong>{label('vt_kdfVal')}</strong>
           </div>
           <div>
-            <span>Symmetric cipher</span>
-            <strong>AES-256-GCM Authenticated</strong>
+            <span>{label('vt_cipher')}</span>
+            <strong>{label('vt_cipherVal')}</strong>
           </div>
           <div>
-            <span>Salt profile</span>
-            <strong>Cryptographic 32-byte salt</strong>
+            <span>{label('vt_salt')}</span>
+            <strong>{label('vt_saltVal')}</strong>
           </div>
           <div>
-            <span>Active unlocked sessions</span>
+            <span>{label('vt_sessions')}</span>
             <strong>
-              {ledger?.unlockedSessions ?? stats.unlocked} file(s) unlocked
+              {tf(lang, 'vt_filesUnlocked', { n: ledger?.unlockedSessions ?? stats.unlocked })}
             </strong>
           </div>
           <div>
-            <span>Auto-lock timer</span>
-            <strong>{ttl}-minute inactivity window</strong>
+            <span>{label('vt_autolock')}</span>
+            <strong>{tf(lang, 'vt_inactivity', { n: ttl })}</strong>
           </div>
           <div>
-            <span>Master keystore integrity</span>
+            <span>{label('vt_integrity')}</span>
             <strong className={ledger?.valid === false ? 'bad' : 'ok-text'}>
-              {ledger?.valid === false ? 'Integrity check failed' : 'Tamper-proof verified ✓'}
+              {ledger?.valid === false ? label('vt_integrityFail') : label('vt_integrityOk')}
             </strong>
           </div>
         </div>
@@ -191,31 +180,31 @@ export default function VaultPage() {
       <div className="vault-stat-row">
         <div className="vault-stat">
           <div className="vault-stat-value">{stats.total}</div>
-          <div className="vault-stat-label">Total confidential matters</div>
-          <div className="muted">In safe custody</div>
+          <div className="vault-stat-label">{label('vt_totalConf')}</div>
+          <div className="muted">{label('vt_safeCustody')}</div>
         </div>
         <div className="vault-stat">
           <div className="vault-stat-value">{stats.locked}</div>
-          <div className="vault-stat-label">Locked in vault</div>
-          <div className="muted">Requires file password</div>
+          <div className="vault-stat-label">{label('vt_lockedVault')}</div>
+          <div className="muted">{label('vt_requiresPw')}</div>
         </div>
         <div className="vault-stat">
           <div className="vault-stat-value">{stats.unlocked}</div>
-          <div className="vault-stat-label">Currently unlocked</div>
-          <div className="muted">Active session access</div>
+          <div className="vault-stat-label">{label('vt_currentlyUnlocked')}</div>
+          <div className="muted">{label('vt_activeSession')}</div>
         </div>
         <div className="vault-stat">
           <div className="vault-stat-value">{stats.events}</div>
-          <div className="vault-stat-label">Keystore audit events</div>
-          <div className="muted">Security logs</div>
+          <div className="vault-stat-label">{label('vt_auditEvents')}</div>
+          <div className="muted">{label('vt_securityLogs')}</div>
         </div>
       </div>
 
       <div className="panel">
-        <div className="eyebrow">Classified inventory</div>
-        <h2 style={{ marginTop: 4 }}>Vault files custody & unlock queue</h2>
+        <div className="eyebrow">{label('vt_inventoryEyebrow')}</div>
+        <h2 style={{ marginTop: 4 }}>{label('vt_inventoryTitle')}</h2>
         {items.length === 0 ? (
-          <p className="muted">No confidential matters in custody yet.</p>
+          <p className="muted">{label('vt_noMatters')}</p>
         ) : (
           <div className="vault-inventory">
             {items.map((m) => {
@@ -226,30 +215,30 @@ export default function VaultPage() {
                   <div className="vault-card-head">
                     <span className="vault-diary">{m.diaryNo}</span>
                     <span className={`badge ${unlocked ? 'APPROVED' : 'AWAITING_DECISION'}`}>
-                      {unlocked ? 'Unlocked' : 'Locked'}
+                      {unlocked ? label('vt_unlocked') : label('vt_locked')}
                     </span>
                   </div>
-                  <h3>{unlocked ? m.subject : 'Protected confidential record'}</h3>
+                  <h3>{unlocked ? m.subject : label('vt_protected')}</h3>
                   <div className="vault-meta">
                     <div>
-                      <span>Holder</span>
-                      <strong>{m.holder?.displayName || 'Unassigned'}</strong>
+                      <span>{label('holder')}</span>
+                      <strong>{m.holder?.displayName || label('unassigned')}</strong>
                     </div>
                     <div>
-                      <span>Status</span>
-                      <strong>{prettyStatus(m.status)}</strong>
+                      <span>{label('status')}</span>
+                      <strong>{enumLabel(lang, m.status)}</strong>
                     </div>
                   </div>
                   {unlocked && expires && (
                     <p className="muted" style={{ fontSize: 12, margin: '0 0 10px' }}>
-                      Session until {new Date(expires).toLocaleString()}
+                      {tf(lang, 'vt_sessionUntil', { date: new Date(expires).toLocaleString() })}
                     </p>
                   )}
                   {unlockId === m.id ? (
                     <form className="vault-unlock-form" onSubmit={(e) => unlock(e, m.id)}>
                       <input
                         type="password"
-                        placeholder="File password (min 12)"
+                        placeholder={label('vt_pwPh')}
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         minLength={12}
@@ -257,7 +246,7 @@ export default function VaultPage() {
                         autoFocus
                       />
                       <button className="btn primary" type="submit" disabled={busy}>
-                        Unlock
+                        {label('files_unlock')}
                       </button>
                       <button
                         type="button"
@@ -267,16 +256,16 @@ export default function VaultPage() {
                           setPassword('');
                         }}
                       >
-                        Cancel
+                        {label('cancel')}
                       </button>
                     </form>
                   ) : unlocked ? (
                     <div className="row" style={{ gap: 8 }}>
                       <Link className="btn primary" href={`/files/${m.id}`}>
-                        Open matter
+                        {label('vt_openMatter')}
                       </Link>
                       <button type="button" className="btn" onClick={() => lock(m.id)}>
-                        Lock now
+                        {label('vt_lockNow')}
                       </button>
                     </div>
                   ) : (
@@ -288,7 +277,7 @@ export default function VaultPage() {
                         setPassword('');
                       }}
                     >
-                      ✎ Enter password
+                      {label('vt_enterPassword')}
                     </button>
                   )}
                 </div>
@@ -301,20 +290,20 @@ export default function VaultPage() {
       <div className="panel vault-log-panel">
         <div className="vault-log-head">
           <div>
-            <div className="eyebrow">Security log</div>
-            <h2 style={{ marginTop: 4 }}>Vault access & password rotation audit trail</h2>
+            <div className="eyebrow">{label('vt_logEyebrow')}</div>
+            <h2 style={{ marginTop: 4 }}>{label('vt_logTitle')}</h2>
           </div>
-          <span className="muted">{events.length} security events</span>
+          <span className="muted">{tf(lang, 'vt_eventsCount', { n: events.length })}</span>
         </div>
         {events.length === 0 ? (
-          <p className="muted">No vault events recorded yet.</p>
+          <p className="muted">{label('vt_noEvents')}</p>
         ) : (
           <ul className="timeline">
             {events.map((ev) => (
               <li key={ev.id}>
                 <strong>{ev.action.replace(/_/g, ' ')}</strong>
                 <div className="muted">
-                  {ev.actor?.displayName || 'System'} · {new Date(ev.createdAt).toLocaleString()}
+                  {ev.actor?.displayName || label('vt_system')} · {new Date(ev.createdAt).toLocaleString()}
                 </div>
                 <div>{ev.summary}</div>
               </li>

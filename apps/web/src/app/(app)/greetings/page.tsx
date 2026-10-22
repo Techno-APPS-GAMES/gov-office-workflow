@@ -6,6 +6,7 @@ import { api } from '@/lib/api';
 import { useAuth } from '@/components/AuthProvider';
 import { useToast } from '@/components/Toast';
 import { useLiveRefresh, notifyDataChanged } from '@/lib/live-refresh';
+import { tf } from '@/lib/i18n';
 
 type MatterOpt = { id: string; diaryNo: string; subject: string };
 
@@ -197,21 +198,43 @@ const emptyForm = {
   deliveryNote: '',
 };
 
-function styleLabel(s?: string | null) {
-  return STYLES[s || 'STATE_GOLD'] || s || STYLES.STATE_GOLD;
+function styleLabel(s: string | null | undefined, label: (k: string) => string) {
+  const k = s || 'STATE_GOLD';
+  return STYLES[k] ? label(`grt_style_${k}`) : s || label('grt_style_STATE_GOLD');
 }
 
-function fmtDay(iso: string) {
-  return new Date(iso + (iso.includes('T') ? '' : 'T12:00:00')).toLocaleDateString(undefined, {
+const TAG_KEYS: Record<string, string> = {
+  'Religious Occasion': 'grt_tag_religious',
+  'National Day': 'grt_tag_national',
+  'Constitutional Day': 'grt_tag_constitutional',
+  'National & Religious Observance': 'grt_tag_natrel',
+  'Diplomatic Protocol': 'grt_tag_diplomatic',
+};
+
+function tagLabel(tag: string, label: (k: string) => string) {
+  const k = TAG_KEYS[tag];
+  return k ? label(k) : tag;
+}
+
+function occKey(key: string) {
+  return key.replace(/-/g, '_');
+}
+
+function channelLabel(c: string, label: (k: string) => string) {
+  return ['PROTOCOL_ECARD', 'PRINT', 'BOTH'].includes(c) ? label(`grt_ch_${c}`) : c.replace(/_/g, ' ');
+}
+
+function fmtDay(iso: string, locale?: string) {
+  return new Date(iso + (iso.includes('T') ? '' : 'T12:00:00')).toLocaleDateString(locale, {
     day: 'numeric',
     month: 'short',
     year: 'numeric',
   });
 }
 
-function fmtWhen(iso?: string | null) {
+function fmtWhen(iso?: string | null, locale?: string) {
   if (!iso) return '';
-  return new Date(iso).toLocaleString(undefined, {
+  return new Date(iso).toLocaleString(locale, {
     day: 'numeric',
     month: 'short',
     year: 'numeric',
@@ -220,16 +243,17 @@ function fmtWhen(iso?: string | null) {
   });
 }
 
-function statusLabel(s: string) {
-  if (s === 'APPROVED') return 'Approved';
-  if (s === 'DISPATCHED') return 'Dispatched';
-  if (s === 'SUBMITTED') return 'Awaiting approval';
-  if (s === 'REJECTED') return 'Rejected';
-  return 'Draft';
+function statusLabel(s: string, label: (k: string) => string) {
+  if (s === 'APPROVED') return label('approved');
+  if (s === 'DISPATCHED') return label('enum_DISPATCHED');
+  if (s === 'SUBMITTED') return label('spc_awaitingApproval');
+  if (s === 'REJECTED') return label('rejected');
+  return label('draft');
 }
 
 export default function GreetingsPage() {
-  const { user } = useAuth();
+  const { user, label, lang } = useAuth();
+  const locale = lang === 'ur' ? 'ur-PK' : undefined;
   const toast = useToast();
   const [items, setItems] = useState<Greeting[]>([]);
   const [matters, setMatters] = useState<MatterOpt[]>([]);
@@ -379,13 +403,13 @@ export default function GreetingsPage() {
           deliveryNote: form.deliveryNote || undefined,
         },
       });
-      toast.success('Greeting card drafted');
+      toast.success(label('grt_toastDrafted'));
       setShowForm(false);
       setForm(emptyForm);
       notifyDataChanged();
       await load();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Create failed');
+      toast.error(err instanceof Error ? err.message : label('createFailed'));
     } finally {
       setBusy(false);
     }
@@ -405,11 +429,13 @@ export default function GreetingsPage() {
           ...extra,
         },
       });
-      toast.success(extra?.markHumanReviewed ? 'Human review recorded' : 'Card saved');
+      toast.success(
+        extra?.markHumanReviewed ? label('spc_toastReviewed') : label('grt_toastSaved'),
+      );
       notifyDataChanged();
       await load();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Save failed');
+      toast.error(err instanceof Error ? err.message : label('saveFailed'));
     } finally {
       setBusy(false);
     }
@@ -424,19 +450,19 @@ export default function GreetingsPage() {
       });
       toast.success(
         status === 'APPROVED'
-          ? 'Card authorized'
+          ? label('grt_toastAuthorized')
           : status === 'DISPATCHED'
-            ? 'Card dispatched'
+            ? label('grt_toastDispatched')
             : status === 'SUBMITTED'
-              ? 'Submitted for authorization'
+              ? label('spc_toastSubmitted')
               : status === 'REJECTED'
-                ? 'Returned for revision'
-                : 'Status updated',
+                ? label('prs_toastReturned')
+                : label('spc_toastStatus'),
       );
       notifyDataChanged();
       await load();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Update failed');
+      toast.error(err instanceof Error ? err.message : label('prs_updateFailed'));
     } finally {
       setBusy(false);
     }
@@ -457,9 +483,9 @@ Human review is mandatory before official dispatch.`,
         },
       });
       const text = res.answer || '';
-      const grab = (label: string) => {
+      const grab = (tag: string) => {
         const m = text.match(
-          new RegExp(`${label}:\\s*([\\s\\S]*?)(?=\\n(?:EN_|UR_)[A-Z]+:|$)`, 'i'),
+          new RegExp(`${tag}:\\s*([\\s\\S]*?)(?=\\n(?:EN_|UR_)[A-Z]+:|$)`, 'i'),
         );
         return (m?.[1] || '').trim();
       };
@@ -474,9 +500,9 @@ Human review is mandatory before official dispatch.`,
         notifyDataChanged();
         await load();
       }
-      toast.success('AI draft inserted — mark human review before submit');
+      toast.success(label('spc_toastAiInserted'));
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'AI draft unavailable');
+      toast.error(err instanceof Error ? err.message : label('spc_aiUnavailable'));
     } finally {
       setAiBusy(false);
     }
@@ -484,18 +510,18 @@ Human review is mandatory before official dispatch.`,
 
   function occasionBadge(key: string) {
     const s = occasionStats.get(key) || { draft: 0, approved: 0, dispatched: 0, submitted: 0 };
-    if (s.dispatched && !s.draft && !s.approved && !s.submitted) return `✓ Dispatched`;
-    if (s.submitted) return `⏳ In review (${s.submitted})`;
-    if (s.approved) return `★ Authorized (${s.approved})`;
-    if (s.draft) return `✎ Draft (${s.draft})`;
-    if (s.dispatched) return `✓ Dispatched (${s.dispatched})`;
-    return 'No card yet';
+    if (s.dispatched && !s.draft && !s.approved && !s.submitted) return `✓ ${label('enum_DISPATCHED')}`;
+    if (s.submitted) return `⏳ ${label('prs_kpiReview')} (${s.submitted})`;
+    if (s.approved) return `★ ${label('grt_authorized')} (${s.approved})`;
+    if (s.draft) return `✎ ${label('draft')} (${s.draft})`;
+    if (s.dispatched) return `✓ ${label('enum_DISPATCHED')} (${s.dispatched})`;
+    return label('grt_noCardYet');
   }
 
   const formFields = (
     <>
       <label>
-        Occasion / title
+        {label('grt_occasionTitle')}
         <input
           value={form.occasion}
           onChange={(e) => setForm({ ...form, occasion: e.target.value })}
@@ -504,7 +530,7 @@ Human review is mandatory before official dispatch.`,
         />
       </label>
       <label>
-        Title (Urdu)
+        {label('grt_titleUr')}
         <input
           value={form.titleUr}
           onChange={(e) => setForm({ ...form, titleUr: e.target.value })}
@@ -512,7 +538,7 @@ Human review is mandatory before official dispatch.`,
         />
       </label>
       <label>
-        Recipient group
+        {label('grt_recipientGroup')}
         <input
           value={form.recipient}
           onChange={(e) => setForm({ ...form, recipient: e.target.value })}
@@ -520,7 +546,7 @@ Human review is mandatory before official dispatch.`,
         />
       </label>
       <label>
-        Dignitary count
+        {label('grt_dignCount')}
         <input
           type="number"
           min={0}
@@ -529,26 +555,26 @@ Human review is mandatory before official dispatch.`,
         />
       </label>
       <label>
-        Template style
+        {label('grt_templateStyle')}
         <select value={form.style} onChange={(e) => setForm({ ...form, style: e.target.value })}>
-          <option value="STATE_GOLD">State gold letterpress</option>
-          <option value="DIPLOMATIC">Diplomatic crest</option>
-          <option value="CONSTITUTIONAL">Constitutional green &amp; silver</option>
+          <option value="STATE_GOLD">{label('grt_styleOpt_STATE_GOLD')}</option>
+          <option value="DIPLOMATIC">{label('grt_styleOpt_DIPLOMATIC')}</option>
+          <option value="CONSTITUTIONAL">{label('grt_styleOpt_CONSTITUTIONAL')}</option>
         </select>
       </label>
       <label>
-        Dispatch channel
+        {label('grt_dispatchChannel')}
         <select
           value={form.channel}
           onChange={(e) => setForm({ ...form, channel: e.target.value })}
         >
-          <option value="PROTOCOL_ECARD">Digital protocol e-card</option>
-          <option value="PRINT">Print / letterpress</option>
-          <option value="BOTH">Both digital + print</option>
+          <option value="PROTOCOL_ECARD">{label('grt_ch_PROTOCOL_ECARD')}</option>
+          <option value="PRINT">{label('grt_ch_PRINT')}</option>
+          <option value="BOTH">{label('grt_ch_BOTH')}</option>
         </select>
       </label>
       <label>
-        Occasion date
+        {label('grt_occasionDate')}
         <input
           type="date"
           value={form.occasionDate}
@@ -556,12 +582,12 @@ Human review is mandatory before official dispatch.`,
         />
       </label>
       <label>
-        Linked protocol matter
+        {label('grt_linkedMatter')}
         <select
           value={form.matterId}
           onChange={(e) => setForm({ ...form, matterId: e.target.value })}
         >
-          <option value="">None</option>
+          <option value="">{label('none')}</option>
           {matters.map((m) => (
             <option key={m.id} value={m.id}>
               {m.diaryNo} — {m.subject}
@@ -570,7 +596,7 @@ Human review is mandatory before official dispatch.`,
         </select>
       </label>
       <label>
-        English felicitations
+        {label('grt_enFelic')}
         <textarea
           rows={4}
           value={form.message}
@@ -580,7 +606,7 @@ Human review is mandatory before official dispatch.`,
         />
       </label>
       <label>
-        Urdu felicitations
+        {label('grt_urFelic')}
         <textarea
           rows={4}
           value={form.messageUr}
@@ -589,7 +615,7 @@ Human review is mandatory before official dispatch.`,
         />
       </label>
       <label>
-        Source / protocol note
+        {label('grt_sourceNote')}
         <input
           value={form.sourcesNote}
           onChange={(e) => setForm({ ...form, sourcesNote: e.target.value })}
@@ -603,53 +629,53 @@ Human review is mandatory before official dispatch.`,
       <div className="overview-hero">
         <div>
           <div className="eyebrow">
-            {user?.role === 'SPEAKER' ? "SPEAKER'S OFFICE" : 'OFFICE WORKFLOW'} · PROTOCOL
+            {user?.role === 'SPEAKER' ? label('hero_speakerOffice') : label('hero_officeWorkflow')} ·{' '}
+            {label('grt_eyebrowProtocol')}
           </div>
-          <h1>Parliamentary greeting cards &amp; felicitations</h1>
+          <h1>{label('grt_title')}</h1>
           <p className="muted">
-            Consultation §3.5 — official correspondence and protocol communications: bilingual
-            felicitations, Speaker authorization, and dignitary dispatch (digital / print).
+            {label('grt_heroSub')}
           </p>
         </div>
         <button type="button" className="btn primary" onClick={() => setShowForm((v) => !v)}>
-          {showForm ? 'Close form' : '+ Issue greeting card'}
+          {showForm ? label('mtg_closeForm') : label('grt_issue')}
         </button>
       </div>
 
       <div className="greet-kpis">
         <div className="greet-kpi">
-          <div className="label">Total greeting cards</div>
+          <div className="label">{label('grt_kpiTotal')}</div>
           <div className="value">{kpis.total}</div>
-          <div className="hint">State felicitations</div>
+          <div className="hint">{label('grt_kpiTotalHint')}</div>
         </div>
         <div className="greet-kpi">
-          <div className="label">In review</div>
+          <div className="label">{label('prs_kpiReview')}</div>
           <div className="value">{kpis.submitted}</div>
-          <div className="hint">Awaiting authorization</div>
+          <div className="hint">{label('grt_kpiReviewHint')}</div>
         </div>
         <div className="greet-kpi">
-          <div className="label">Staff drafts</div>
+          <div className="label">{label('prs_kpiDrafts')}</div>
           <div className="value">{kpis.drafts}</div>
-          <div className="hint">Draft / rejected</div>
+          <div className="hint">{label('prs_kpiDraftsHint')}</div>
         </div>
         <div className="greet-kpi">
-          <div className="label">Dispatched</div>
+          <div className="label">{label('enum_DISPATCHED')}</div>
           <div className="value">{kpis.dispatched}</div>
-          <div className="hint">{kpis.recipients} total recipients</div>
+          <div className="hint">{tf(lang, 'grt_kpiRecipients', { n: kpis.recipients })}</div>
         </div>
       </div>
 
       {showForm ? (
         <div className="panel">
-          <h2>Issue greeting card</h2>
+          <h2>{label('grt_issueTitle')}</h2>
           <form className="grid-form" onSubmit={create}>
             {formFields}
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <button type="submit" className="btn primary" disabled={busy}>
-                Save draft
+                {label('prs_saveDraft')}
               </button>
               <button type="button" className="btn" disabled={aiBusy} onClick={aiDraft}>
-                {aiBusy ? 'Drafting…' : 'AI assist'}
+                {aiBusy ? label('spc_drafting') : label('prs_aiAssist')}
               </button>
             </div>
           </form>
@@ -659,32 +685,34 @@ Human review is mandatory before official dispatch.`,
       <div className="panel greet-calendar-panel">
         <div className="remote-section-head">
           <div>
-            <div className="eyebrow">Protocol calendar</div>
-            <h2>Upcoming State &amp; Religious Occasions</h2>
+            <div className="eyebrow">{label('grt_calEyebrow')}</div>
+            <h2>{label('grt_upcoming')}</h2>
           </div>
-          <span className="greet-track-badge">Active occasions tracked</span>
+          <span className="greet-track-badge">{label('grt_tracked')}</span>
         </div>
         <div className="greet-occasions">
           {OCCASIONS.map((o) => (
             <article key={o.key} className="greet-occasion">
-              <div className="greet-occ-tag">{o.tag}</div>
-              <div className="greet-occ-date">{fmtDay(o.date)}</div>
-              <h3>{o.title}</h3>
-              <p className="greet-ur" dir="rtl">
-                {o.titleUr}
-              </p>
-              <p className="muted tiny">{o.audience}</p>
+              <div className="greet-occ-tag">{tagLabel(o.tag, label)}</div>
+              <div className="greet-occ-date">{fmtDay(o.date, locale)}</div>
+              <h3>{lang === 'ur' ? o.titleUr : label(`grt_occ_${occKey(o.key)}_title`)}</h3>
+              {lang === 'ur' ? null : (
+                <p className="greet-ur" dir="rtl">
+                  {o.titleUr}
+                </p>
+              )}
+              <p className="muted tiny">{label(`grt_occ_${occKey(o.key)}_audience`)}</p>
               <div className="greet-occ-status">{occasionBadge(o.key)}</div>
               <div className="greet-occ-actions">
                 <button type="button" className="btn" onClick={() => setFilterKey(o.key)}>
-                  View
+                  {label('view')}
                 </button>
                 <button
                   type="button"
                   className="btn greet-issue-btn"
                   onClick={() => fillFromOccasion(o)}
                 >
-                  + Issue
+                  {label('grt_issueShort')}
                 </button>
               </div>
             </article>
@@ -693,17 +721,17 @@ Human review is mandatory before official dispatch.`,
       </div>
 
       <div className="panel">
-        <div className="eyebrow">Dignitaries database</div>
+        <div className="eyebrow">{label('grt_dignDb')}</div>
         <h2 style={{ marginTop: 4, fontFamily: 'var(--font-display)', color: 'var(--pine)' }}>
-          Protocol recipient categories
+          {label('grt_recipCats')}
         </h2>
         <div className="greet-recipients">
-          {RECIPIENT_CATS.map((r) => (
+          {RECIPIENT_CATS.map((r, i) => (
             <div key={r.title} className="greet-recipient">
               <span className="greet-rec-icon">{r.icon}</span>
               <div>
-                <strong>{r.title}</strong>
-                <div className="muted tiny">{r.detail}</div>
+                <strong>{label(`grt_cat${i + 1}_title`)}</strong>
+                <div className="muted tiny">{label(`grt_cat${i + 1}_detail`)}</div>
               </div>
             </div>
           ))}
@@ -716,7 +744,7 @@ Human review is mandatory before official dispatch.`,
           className={`btn ${filterKey === 'all' ? 'primary' : ''}`}
           onClick={() => setFilterKey('all')}
         >
-          All occasions
+          {label('grt_allOccasions')}
         </button>
         {['ALL', 'DRAFT', 'SUBMITTED', 'APPROVED', 'DISPATCHED', 'REJECTED'].map((f) => (
           <button
@@ -725,7 +753,7 @@ Human review is mandatory before official dispatch.`,
             className={`btn ${statusFilter === f ? 'primary' : ''}`}
             onClick={() => setStatusFilter(f)}
           >
-            {f === 'ALL' ? 'All status' : statusLabel(f)}
+            {f === 'ALL' ? label('grt_allStatus') : statusLabel(f, label)}
           </button>
         ))}
       </div>
@@ -733,18 +761,18 @@ Human review is mandatory before official dispatch.`,
       <div className="greet-cards">
         {filtered.length === 0 ? (
           <div className="panel">
-            <p className="muted">No greeting cards in this view. Issue one from the protocol calendar.</p>
+            <p className="muted">{label('grt_noneInView')}</p>
           </div>
         ) : (
           filtered.map((g) => (
             <article key={g.id} className="greet-card">
               <div className="greet-card-top">
                 <div className="greet-card-id">
-                  {g.cardCode || `GC-${g.id.slice(0, 4)}`} · {styleLabel(g.style)}
-                  {g.channel ? ` · ${g.channel.replace(/_/g, ' ')}` : ''}
+                  {g.cardCode || `GC-${g.id.slice(0, 4)}`} · {styleLabel(g.style, label)}
+                  {g.channel ? ` · ${channelLabel(g.channel, label)}` : ''}
                 </div>
                 <span className={`greet-status ${g.status.toLowerCase()}`}>
-                  {statusLabel(g.status)}
+                  {statusLabel(g.status, label)}
                 </span>
               </div>
               <h3>{g.occasion}</h3>
@@ -755,7 +783,7 @@ Human review is mandatory before official dispatch.`,
               ) : null}
               {g.matter ? (
                 <p className="muted tiny">
-                  Protocol file:{' '}
+                  {label('grt_protocolFile')}:{' '}
                   <Link href={`/files/${g.matter.id}`}>
                     {g.matter.diaryNo} — {g.matter.subject}
                   </Link>
@@ -767,38 +795,38 @@ Human review is mandatory before official dispatch.`,
                   style={{ marginTop: 8 }}
                 >
                   {g.humanReviewedAt
-                    ? 'AI-assisted — human review recorded'
-                    : 'AI-assisted — human review required before submit'}
+                    ? label('prs_aiReviewed')
+                    : label('prs_aiReviewRequired')}
                 </div>
               ) : null}
               <div className="greet-bilingual">
                 <div>
-                  <div className="eyebrow">English felicitations</div>
+                  <div className="eyebrow">{label('grt_enFelic')}</div>
                   <p>{g.message}</p>
                 </div>
                 <div>
-                  <div className="eyebrow">Urdu felicitations</div>
+                  <div className="eyebrow">{label('grt_urFelic')}</div>
                   <p dir="rtl">{g.messageUr || '—'}</p>
                 </div>
               </div>
               <div className="greet-card-meta muted">
-                Recipient group: {g.recipient}
-                {g.recipientCount ? ` (${g.recipientCount} dignitaries)` : ''}
-                {g.approvedAt ? ` · Approved ${fmtWhen(g.approvedAt)}` : ''}
+                {label('grt_recipientGroup')}: {g.recipient}
+                {g.recipientCount ? ` (${tf(lang, 'grt_nDignitaries', { n: g.recipientCount })})` : ''}
+                {g.approvedAt ? ` · ${label('approved')} ${fmtWhen(g.approvedAt, locale)}` : ''}
                 {g.status === 'DISPATCHED' && g.dispatchRef
-                  ? ` · Dispatch Ref: ${g.dispatchRef}`
+                  ? ` · ${label('grt_dispatchRef')}: ${g.dispatchRef}`
                   : ''}
               </div>
               {g.rejectReason ? (
-                <p className="muted tiny">Reject reason: {g.rejectReason}</p>
+                <p className="muted tiny">{label('spc_rejectReason')}: {g.rejectReason}</p>
               ) : null}
               <div className="greet-card-actions">
                 <button type="button" className="btn" onClick={() => setPreview(g)}>
-                  Preview card
+                  {label('grt_preview')}
                 </button>
                 {g.status !== 'DISPATCHED' ? (
                   <button type="button" className="btn" onClick={() => setEditId(g.id)}>
-                    Edit / review
+                    {label('prs_editReview')}
                   </button>
                 ) : null}
                 {(g.status === 'DRAFT' || g.status === 'REJECTED') ? (
@@ -808,7 +836,7 @@ Human review is mandatory before official dispatch.`,
                     disabled={busy}
                     onClick={() => setStatus(g.id, 'SUBMITTED')}
                   >
-                    Submit for authorization
+                    {label('spc_submitAuth')}
                   </button>
                 ) : null}
                 {canAuthorize && (g.status === 'DRAFT' || g.status === 'SUBMITTED') ? (
@@ -818,7 +846,7 @@ Human review is mandatory before official dispatch.`,
                     disabled={busy}
                     onClick={() => setStatus(g.id, 'APPROVED')}
                   >
-                    Authorize card
+                    {label('grt_authorizeCard')}
                   </button>
                 ) : null}
                 {canAuthorize && g.status === 'SUBMITTED' ? (
@@ -831,7 +859,7 @@ Human review is mandatory before official dispatch.`,
                         setEditId(g.id);
                         setRejectReason(e.target.value);
                       }}
-                      placeholder="Reject reason"
+                      placeholder={label('spc_rejectReason')}
                     />
                     <button
                       type="button"
@@ -839,7 +867,7 @@ Human review is mandatory before official dispatch.`,
                       disabled={busy || rejectReason.trim().length < 5 || editId !== g.id}
                       onClick={() => setStatus(g.id, 'REJECTED', { reason: rejectReason })}
                     >
-                      Reject
+                      {label('prs_reject')}
                     </button>
                   </>
                 ) : null}
@@ -850,12 +878,12 @@ Human review is mandatory before official dispatch.`,
                     disabled={busy}
                     onClick={() => setStatus(g.id, 'DISPATCHED')}
                   >
-                    Dispatch card →
+                    {label('grt_dispatchCard')}
                   </button>
                 ) : null}
                 {g.status === 'DISPATCHED' ? (
                   <span className="btn greet-done-btn">
-                    ✓ Dispatched {g.dispatchedAt ? fmtDay(g.dispatchedAt.slice(0, 10)) : ''}
+                    ✓ {label('enum_DISPATCHED')} {g.dispatchedAt ? fmtDay(g.dispatchedAt.slice(0, 10), locale) : ''}
                   </span>
                 ) : null}
               </div>
@@ -870,28 +898,28 @@ Human review is mandatory before official dispatch.`,
             <div className="meet-section-head">
               <div>
                 <div className="eyebrow">
-                  {editing.cardCode} · {statusLabel(editing.status)}
+                  {editing.cardCode} · {statusLabel(editing.status, label)}
                 </div>
-                <h2>Edit greeting card</h2>
+                <h2>{label('grt_editTitle')}</h2>
               </div>
               <button type="button" className="btn" onClick={() => setEditId(null)}>
-                Close
+                {label('close')}
               </button>
             </div>
             {editing.aiAssisted ? (
               <div className={`speech-ai-banner ${editing.humanReviewedAt ? 'ok' : 'warn'}`}>
                 {editing.humanReviewedAt
-                  ? 'AI-assisted — human review recorded'
-                  : 'AI-assisted — mark human review before submit'}
+                  ? label('prs_aiReviewed')
+                  : label('prs_aiMarkReview')}
               </div>
             ) : null}
             <div className="grid-form">{formFields}</div>
             <div className="speech-drawer-actions">
               <button type="button" className="btn" disabled={busy} onClick={() => saveEdit()}>
-                Save
+                {label('save')}
               </button>
               <button type="button" className="btn" disabled={aiBusy} onClick={aiDraft}>
-                {aiBusy ? 'Drafting…' : 'AI assist'}
+                {aiBusy ? label('spc_drafting') : label('prs_aiAssist')}
               </button>
               {editing.aiAssisted && !editing.humanReviewedAt ? (
                 <button
@@ -900,7 +928,7 @@ Human review is mandatory before official dispatch.`,
                   disabled={busy}
                   onClick={() => saveEdit({ markHumanReviewed: true })}
                 >
-                  Mark human review
+                  {label('prs_markReview')}
                 </button>
               ) : null}
             </div>
@@ -912,7 +940,7 @@ Human review is mandatory before official dispatch.`,
         <div className="greet-modal" role="dialog" onClick={() => setPreview(null)}>
           <div className="greet-modal-card" onClick={(e) => e.stopPropagation()}>
             <div className="eyebrow">
-              {preview.cardCode} · {styleLabel(preview.style)}
+              {preview.cardCode} · {styleLabel(preview.style, label)}
             </div>
             <h2>{preview.occasion}</h2>
             {preview.titleUr ? (
@@ -925,12 +953,12 @@ Human review is mandatory before official dispatch.`,
               <p dir="rtl">{preview.messageUr || '—'}</p>
             </div>
             <p className="muted tiny">
-              To: {preview.recipient}
-              {preview.recipientCount ? ` · ${preview.recipientCount} dignitaries` : ''}
+              {label('grt_to')}: {preview.recipient}
+              {preview.recipientCount ? ` · ${tf(lang, 'grt_nDignitaries', { n: preview.recipientCount })}` : ''}
               {preview.dispatchRef ? ` · ${preview.dispatchRef}` : ''}
             </p>
             <button type="button" className="btn primary" onClick={() => setPreview(null)}>
-              Close preview
+              {label('prs_closePreview')}
             </button>
           </div>
         </div>

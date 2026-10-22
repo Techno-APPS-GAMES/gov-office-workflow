@@ -2,12 +2,12 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { ROLE_META, type Role } from '@gow/shared';
 import { api } from '@/lib/api';
 import { useAuth } from '@/components/AuthProvider';
 import { useToast } from '@/components/Toast';
 import { roleAvatar } from '@/lib/avatars';
 import { useLiveRefresh, notifyDataChanged } from '@/lib/live-refresh';
+import { enumLabel, roleTitle, tf } from '@/lib/i18n';
 
 type MatterOpt = {
   id: string;
@@ -69,11 +69,6 @@ type Preview = {
   };
 };
 
-function roleTitle(role?: string) {
-  if (!role) return '';
-  return ROLE_META[role as Role]?.title || role.replace(/_/g, ' ');
-}
-
 function digestOf(row: EsignRow) {
   if (row.documentHash) return row.documentHash;
   if (!row.signature) return null;
@@ -102,9 +97,8 @@ function fmtSigned(iso?: string | null) {
   });
 }
 
-function urgencyOf(priority?: string) {
-  if (priority === 'URGENT' || priority === 'VIP' || priority === 'PRIORITY') return 'Urgent';
-  return 'Routine';
+function isUrgent(priority?: string) {
+  return priority === 'URGENT' || priority === 'VIP' || priority === 'PRIORITY';
 }
 
 function displayRef(row: EsignRow) {
@@ -112,6 +106,7 @@ function displayRef(row: EsignRow) {
 }
 
 function SignerCell({ person }: { person?: Person | null }) {
+  const { lang } = useAuth();
   if (!person) return <span className="muted">—</span>;
   const src = roleAvatar(person.role);
   return (
@@ -124,14 +119,14 @@ function SignerCell({ person }: { person?: Person | null }) {
       )}
       <div>
         <strong>{person.displayName}</strong>
-        <div className="muted tiny">{roleTitle(person.role)}</div>
+        <div className="muted tiny">{roleTitle(lang, person.role)}</div>
       </div>
     </div>
   );
 }
 
 export default function RemotePage() {
-  const { user } = useAuth();
+  const { user, lang, label } = useAuth();
   const toast = useToast();
   const [items, setItems] = useState<EsignRow[]>([]);
   const [matters, setMatters] = useState<MatterOpt[]>([]);
@@ -198,7 +193,7 @@ export default function RemotePage() {
         method: 'POST',
         json: { matterId, signerId, purpose: purpose.trim() || undefined, method },
       });
-      toast.success('Remote seal requested — signer notified');
+      toast.success(label('rm_toastRequested'));
       setShowRequest(false);
       setMatterId('');
       setPurpose('');
@@ -206,7 +201,7 @@ export default function RemotePage() {
       notifyDataChanged();
       await load();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Request failed');
+      toast.error(err instanceof Error ? err.message : label('rm_requestFailed'));
     } finally {
       setBusy(false);
     }
@@ -219,7 +214,7 @@ export default function RemotePage() {
       setPreview(p);
       setWetInkNote('');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Preview failed');
+      toast.error(err instanceof Error ? err.message : label('rm_previewFailed'));
     } finally {
       setBusy(false);
     }
@@ -237,13 +232,13 @@ export default function RemotePage() {
         },
       });
       toast.success(
-        preview.method === 'WET_INK' ? 'Wet-ink seal recorded' : 'Document sealed (RSA-SHA256)',
+        preview.method === 'WET_INK' ? label('rm_toastWetInk') : label('rm_toastSealed'),
       );
       setPreview(null);
       notifyDataChanged();
       await load();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Sign failed');
+      toast.error(err instanceof Error ? err.message : label('rm_signFailed'));
     } finally {
       setBusy(false);
     }
@@ -258,13 +253,13 @@ export default function RemotePage() {
         method: 'POST',
         json: { reason: declineReason },
       });
-      toast.success('Seal request declined');
+      toast.success(label('rm_toastDeclined'));
       setDeclineId(null);
       setDeclineReason('');
       notifyDataChanged();
       await load();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Decline failed');
+      toast.error(err instanceof Error ? err.message : label('rm_declineFailed'));
     } finally {
       setBusy(false);
     }
@@ -279,13 +274,13 @@ export default function RemotePage() {
         method: 'POST',
         json: { reason: revokeReason },
       });
-      toast.success('Certificate revoked');
+      toast.success(label('rm_toastRevoked'));
       setRevokeId(null);
       setRevokeReason('');
       notifyDataChanged();
       await load();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Revoke failed');
+      toast.error(err instanceof Error ? err.message : label('rm_revokeFailed'));
     } finally {
       setBusy(false);
     }
@@ -297,10 +292,10 @@ export default function RemotePage() {
       const res = await api<VerifyResult>(`/esign/verify?certId=${encodeURIComponent(certId)}`);
       setLookupResult(res);
       setLookupId(certId);
-      if (res.valid) toast.success('Seal verified');
-      else toast.error(res.reason || 'Seal verification failed');
+      if (res.valid) toast.success(label('rm_toastVerified'));
+      else toast.error(res.reason || label('rm_sealVerifyFailed'));
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Verify failed');
+      toast.error(err instanceof Error ? err.message : label('rm_verifyFailed'));
     } finally {
       setVerifyingId(null);
     }
@@ -315,7 +310,7 @@ export default function RemotePage() {
 
   function copyCert(certId: string) {
     void navigator.clipboard?.writeText(certId);
-    toast.success('Certificate ID copied');
+    toast.success(label('rm_toastCopied'));
   }
 
   return (
@@ -323,34 +318,30 @@ export default function RemotePage() {
       <div className="overview-hero">
         <div>
           <div className="eyebrow">
-            {user?.role === 'SPEAKER' ? "SPEAKER'S OFFICE" : 'OFFICE WORKFLOW'} · REMOTE APPROVAL
+            {user?.role === 'SPEAKER' ? label('cm_speakerOffice') : label('cm_officeWorkflow')} ·{' '}
+            {label('rm_eyebrow')}
           </div>
-          <h1>Remote work &amp; digital E-sign</h1>
-          <p className="muted">
-            Secure remote review and approval (consultation §3.5): RSA-SHA256 local seal, wet-ink
-            scan path, certificate verify, and full audit trail. Accredited ECAC PKI is a later
-            production connector.
-          </p>
+          <h1>{label('rm_title')}</h1>
+          <p className="muted">{label('rm_heroSub')}</p>
         </div>
         {canRequest ? (
           <button type="button" className="btn primary" onClick={() => setShowRequest((v) => !v)}>
-            {showRequest ? 'Close request' : '+ Request remote seal'}
+            {showRequest ? label('rm_closeRequest') : label('remote_request')}
           </button>
         ) : null}
       </div>
 
       {showRequest && canRequest ? (
         <div className="panel">
-          <h2>Request remote seal</h2>
+          <h2>{label('files_remoteSeal')}</h2>
           <p className="muted" style={{ marginTop: 0 }}>
-            Queues the matter for the designated officer. They receive an inbox notice and must
-            review the sealed payload before signing.
+            {label('rm_requestHelp')}
           </p>
           <form className="grid-form" onSubmit={requestSeal}>
             <label>
-              Matter
+              {label('rm_matter')}
               <select value={matterId} onChange={(e) => setMatterId(e.target.value)} required>
-                <option value="">Select matter</option>
+                <option value="">{label('rm_selectMatter')}</option>
                 {matters.map((m) => (
                   <option key={m.id} value={m.id}>
                     {m.diaryNo} — {m.subject}
@@ -359,36 +350,36 @@ export default function RemotePage() {
               </select>
             </label>
             <label>
-              Designated signer
+              {label('remote_signer')}
               <select value={signerId} onChange={(e) => setSignerId(e.target.value)} required>
                 {people.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.displayName}
-                    {p.role ? ` (${roleTitle(p.role)})` : ''}
+                    {p.role ? ` (${roleTitle(lang, p.role)})` : ''}
                   </option>
                 ))}
               </select>
             </label>
             <label>
-              Purpose / what to approve
+              {label('rm_purposeLabel')}
               <input
                 value={purpose}
                 onChange={(e) => setPurpose(e.target.value)}
-                placeholder="e.g. Approve put-up for Speaker seal / despatch authority"
+                placeholder={label('rm_purposePlaceholder')}
               />
             </label>
             <label>
-              Seal method
+              {label('rm_sealMethod')}
               <select
                 value={method}
                 onChange={(e) => setMethod(e.target.value as 'LOCAL_PKI' | 'WET_INK')}
               >
-                <option value="LOCAL_PKI">Local PKI (RSA-SHA256 cryptographic seal)</option>
-                <option value="WET_INK">Wet-ink scan (manual authenticity path)</option>
+                <option value="LOCAL_PKI">{label('rm_methodPkiLong')}</option>
+                <option value="WET_INK">{label('rm_methodWetLong')}</option>
               </select>
             </label>
             <button type="submit" className="btn primary" disabled={busy}>
-              Queue for off-site e-sign
+              {label('rm_queueBtn')}
             </button>
           </form>
         </div>
@@ -396,32 +387,32 @@ export default function RemotePage() {
 
       {preview ? (
         <div className="panel remote-preview-panel">
-          <div className="eyebrow">Review before seal</div>
+          <div className="eyebrow">{label('remote_preview')}</div>
           <h2>
             {preview.matter.diaryNo}: {preview.matter.subject}
           </h2>
           <p className="muted">
-            Cert <code>{preview.certId}</code> · {preview.algorithm} ·{' '}
-            {preview.matter.classification}
+            {label('rm_thCert')}: <code>{preview.certId}</code> · {preview.algorithm} ·{' '}
+            {enumLabel(lang, preview.matter.classification)}
             {preview.purpose ? ` · ${preview.purpose}` : ''}
           </p>
           {preview.matter.decisionText ? (
             <div className="remote-decision-box">
-              <strong>Decision text on file</strong>
+              <strong>{label('rm_decisionOnFile')}</strong>
               <p>{preview.matter.decisionText}</p>
             </div>
           ) : null}
           <p className="tiny muted">
-            Document hash (confirm): <code>{preview.documentHash}</code>
+            {label('rm_docHash')} <code>{preview.documentHash}</code>
           </p>
           {preview.method === 'WET_INK' ? (
             <label className="field">
-              Wet-ink scan note (required)
+              {label('rm_wetNote')}
               <textarea
                 rows={3}
                 value={wetInkNote}
                 onChange={(e) => setWetInkNote(e.target.value)}
-                placeholder="Describe physical signature page / scan reference"
+                placeholder={label('rm_wetNotePlaceholder')}
                 required
                 minLength={8}
               />
@@ -429,10 +420,10 @@ export default function RemotePage() {
           ) : null}
           <div className="actions" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button type="button" className="btn primary" disabled={busy} onClick={confirmSign}>
-              {preview.method === 'WET_INK' ? 'Record wet-ink seal' : 'E-Sign & Seal Document'}
+              {preview.method === 'WET_INK' ? label('remote_wetInk') : label('remote_sealBtn')}
             </button>
             <button type="button" className="btn" disabled={busy} onClick={() => setPreview(null)}>
-              Cancel
+              {label('cancel')}
             </button>
           </div>
         </div>
@@ -440,25 +431,25 @@ export default function RemotePage() {
 
       {declineId ? (
         <div className="panel">
-          <h2>Decline seal request</h2>
+          <h2>{label('rm_declineTitle')}</h2>
           <form className="grid-form" onSubmit={submitDecline}>
             <label>
-              Reason
+              {label('reason')}
               <textarea
                 rows={3}
                 value={declineReason}
                 onChange={(e) => setDeclineReason(e.target.value)}
                 minLength={5}
                 required
-                placeholder="Why this cannot be sealed now"
+                placeholder={label('rm_declinePlaceholder')}
               />
             </label>
             <div style={{ display: 'flex', gap: 8 }}>
               <button type="submit" className="btn" disabled={busy}>
-                Decline
+                {label('remote_decline')}
               </button>
               <button type="button" className="btn" onClick={() => setDeclineId(null)}>
-                Cancel
+                {label('cancel')}
               </button>
             </div>
           </form>
@@ -467,25 +458,25 @@ export default function RemotePage() {
 
       {revokeId ? (
         <div className="panel">
-          <h2>Revoke certificate</h2>
+          <h2>{label('rm_revokeTitle')}</h2>
           <form className="grid-form" onSubmit={submitRevoke}>
             <label>
-              Reason
+              {label('reason')}
               <textarea
                 rows={3}
                 value={revokeReason}
                 onChange={(e) => setRevokeReason(e.target.value)}
                 minLength={5}
                 required
-                placeholder="Superseded / issued in error / authority withdrawn"
+                placeholder={label('rm_revokePlaceholder')}
               />
             </label>
             <div style={{ display: 'flex', gap: 8 }}>
               <button type="submit" className="btn" disabled={busy}>
-                Revoke
+                {label('remote_revoke')}
               </button>
               <button type="button" className="btn" onClick={() => setRevokeId(null)}>
-                Cancel
+                {label('cancel')}
               </button>
             </div>
           </form>
@@ -495,33 +486,32 @@ export default function RemotePage() {
       <div className="panel remote-queue-panel">
         <div className="remote-section-head">
           <div>
-            <div className="eyebrow">Urgent off-site approval queue</div>
-            <h2>Matters awaiting remote signature</h2>
-            <p className="muted remote-lead">
-              Designated officers review official drafts from remote locations and apply a verified
-              digital seal (or wet-ink confirmation) through official channels only.
-            </p>
+            <div className="eyebrow">{label('rm_queueEyebrow')}</div>
+            <h2>{label('rm_queueTitle')}</h2>
+            <p className="muted remote-lead">{label('rm_queueLead')}</p>
           </div>
-          <span className="remote-pending-badge">{pending.length} pending off-site</span>
+          <span className="remote-pending-badge">
+            {tf(lang, 'rm_pendingBadge', { count: pending.length })}
+          </span>
         </div>
 
         {pending.length === 0 ? (
           <p className="muted" style={{ marginTop: 12 }}>
-            No matters awaiting remote signature. Request a seal above, or from a matter page.
+            {label('rm_emptyQueue')}
           </p>
         ) : (
           <div className="remote-queue">
             {pending.map((r) => {
-              const subject = r.matter?.subject || 'Untitled matter';
+              const subject = r.matter?.subject || label('rm_untitled');
               const ref = displayRef(r);
-              const urgent = urgencyOf(r.matter?.priority);
+              const urgent = isUrgent(r.matter?.priority);
               const isSigner = user?.id === r.signer?.id;
               return (
                 <article key={r.id} className="remote-card">
                   <div className="remote-card-top">
                     <span className="remote-ref">{ref}</span>
-                    <span className={`remote-urgency ${urgent === 'Urgent' ? 'urgent' : 'routine'}`}>
-                      {urgent}
+                    <span className={`remote-urgency ${urgent ? 'urgent' : 'routine'}`}>
+                      {urgent ? label('rm_urgent') : label('rm_routine')}
                     </span>
                   </div>
                   <h3>
@@ -529,18 +519,20 @@ export default function RemotePage() {
                   </h3>
                   <div className="remote-meta">
                     <div>
-                      <span>Method</span>
-                      <strong>{r.method === 'WET_INK' ? 'Wet-ink' : 'Local PKI'}</strong>
+                      <span>{label('remote_method')}</span>
+                      <strong>
+                        {r.method === 'WET_INK' ? label('rm_methodWet') : label('rm_methodPki')}
+                      </strong>
                     </div>
                     <div>
-                      <span>Signer</span>
+                      <span>{label('rm_signer')}</span>
                       <strong>{r.signer?.displayName || '—'}</strong>
                     </div>
                   </div>
                   {r.purpose ? <p className="muted tiny">{r.purpose}</p> : null}
                   {r.matter?.id ? (
                     <p className="tiny">
-                      <Link href={`/files/${r.matter.id}`}>Open matter →</Link>
+                      <Link href={`/files/${r.matter.id}`}>{label('rm_openMatter')}</Link>
                     </p>
                   ) : null}
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
@@ -549,9 +541,9 @@ export default function RemotePage() {
                       className="btn remote-sign-btn"
                       disabled={busy || !isSigner}
                       onClick={() => openPreview(r.id)}
-                      title={!isSigner ? 'Only the designated signer can seal' : undefined}
+                      title={!isSigner ? label('rm_onlySigner') : undefined}
                     >
-                      Review &amp; seal
+                      {label('remote_review')}
                     </button>
                     {isSigner ? (
                       <button
@@ -563,7 +555,7 @@ export default function RemotePage() {
                           setDeclineReason('');
                         }}
                       >
-                        Decline
+                        {label('remote_decline')}
                       </button>
                     ) : null}
                     {canRevoke ? (
@@ -576,7 +568,7 @@ export default function RemotePage() {
                           setRevokeReason('');
                         }}
                       >
-                        Revoke request
+                        {label('rm_revokeRequest')}
                       </button>
                     ) : null}
                   </div>
@@ -590,29 +582,31 @@ export default function RemotePage() {
       <div className="panel remote-ledger-panel">
         <div className="remote-section-head">
           <div>
-            <div className="eyebrow">Cryptographic verification ledger</div>
-            <h2>Signed documents &amp; certificate archive</h2>
+            <div className="eyebrow">{label('rm_ledgerEyebrow')}</div>
+            <h2>{label('rm_ledgerTitle')}</h2>
           </div>
-          <span className="remote-signed-badge">{signed.length} signed certificates</span>
+          <span className="remote-signed-badge">
+            {tf(lang, 'rm_signedBadge', { count: signed.length })}
+          </span>
         </div>
 
         <div className="table-wrap">
           <table className="table remote-table">
             <thead>
               <tr>
-                <th>Certificate ID</th>
-                <th>Document / Matter</th>
-                <th>Signer</th>
-                <th>Signed</th>
-                <th>Seal</th>
-                <th>Actions</th>
+                <th>{label('rm_thCert')}</th>
+                <th>{label('rm_thDoc')}</th>
+                <th>{label('rm_signer')}</th>
+                <th>{label('rm_thSigned')}</th>
+                <th>{label('rm_thSeal')}</th>
+                <th>{label('actions')}</th>
               </tr>
             </thead>
             <tbody>
               {signed.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="muted">
-                    No signed certificates yet.
+                    {label('rm_noSigned')}
                   </td>
                 </tr>
               ) : (
@@ -625,12 +619,12 @@ export default function RemotePage() {
                           type="button"
                           className="remote-cert linkish"
                           onClick={() => copyCert(r.certId)}
-                          title="Copy certificate ID"
+                          title={label('rm_copyCert')}
                         >
                           {r.certId}
                         </button>
                         <div className="muted tiny">
-                          {r.method === 'WET_INK' ? 'Wet-ink' : r.algorithm || 'RSA-SHA256'}
+                          {r.method === 'WET_INK' ? label('rm_methodWet') : r.algorithm || 'RSA-SHA256'}
                         </div>
                       </td>
                       <td>
@@ -640,7 +634,7 @@ export default function RemotePage() {
                             <div className="muted tiny">{r.matter?.subject}</div>
                             {r.matter?.id ? (
                               <Link className="tiny" href={`/files/${r.matter.id}`}>
-                                Open file
+                                {label('rm_openFile')}
                               </Link>
                             ) : null}
                           </div>
@@ -661,7 +655,7 @@ export default function RemotePage() {
                             disabled={verifyingId === r.certId}
                             onClick={() => verifySeal(r.certId)}
                           >
-                            {verifyingId === r.certId ? 'Checking…' : 'Verify seal'}
+                            {verifyingId === r.certId ? label('rm_checking') : label('remote_verify')}
                           </button>
                           {canRevoke ? (
                             <button
@@ -672,7 +666,7 @@ export default function RemotePage() {
                                 setRevokeReason('');
                               }}
                             >
-                              Revoke
+                              {label('remote_revoke')}
                             </button>
                           ) : null}
                         </div>
@@ -688,14 +682,14 @@ export default function RemotePage() {
 
       {closed.length > 0 ? (
         <div className="panel">
-          <div className="eyebrow">Closed requests</div>
-          <h2>Declined / revoked</h2>
+          <div className="eyebrow">{label('rm_closedEyebrow')}</div>
+          <h2>{label('rm_closedTitle')}</h2>
           <ul className="action-list">
             {closed.map((r) => (
               <li key={r.id}>
                 <div>
                   <strong>
-                    {r.certId} · {r.status}
+                    {r.certId} · {enumLabel(lang, r.status)}
                   </strong>
                   <div className="muted">
                     {r.matter?.diaryNo} — {r.declineReason || r.revokeReason || '—'}
@@ -708,30 +702,30 @@ export default function RemotePage() {
       ) : null}
 
       <div className="panel remote-lookup-panel">
-        <div className="eyebrow">Certificate lookup</div>
-        <h2>Verify digital seal integrity</h2>
+        <div className="eyebrow">{label('rm_lookupEyebrow')}</div>
+        <h2>{label('rm_lookupTitle')}</h2>
         <form className="remote-lookup-form" onSubmit={lookup}>
           <label className="remote-lookup-field">
-            Enter Certificate ID
+            {label('rm_enterCert')}
             <input
               value={lookupId}
               onChange={(e) => setLookupId(e.target.value)}
-              placeholder="Paste a Certificate ID from the ledger"
+              placeholder={label('rm_certPlaceholder')}
               required
             />
           </label>
           <button type="submit" className="btn remote-verify-btn" disabled={!!verifyingId}>
-            Verify certificate →
+            {label('rm_verifyCert')}
           </button>
         </form>
         {lookupResult ? (
           <div className={`remote-lookup-result ${lookupResult.valid ? 'ok' : 'bad'}`}>
-            <strong>{lookupResult.valid ? 'Seal valid' : 'Seal invalid'}</strong>
+            <strong>{lookupResult.valid ? label('rm_sealValid') : label('rm_sealInvalid')}</strong>
             <p>
               {lookupResult.certId}
               {lookupResult.matter ? ` · ${lookupResult.matter.diaryNo}` : ''}
               {lookupResult.signer ? ` · ${lookupResult.signer.displayName}` : ''}
-              {lookupResult.method ? ` · ${lookupResult.method}` : ''}
+              {lookupResult.method ? ` · ${enumLabel(lang, lookupResult.method)}` : ''}
             </p>
             <p className="muted">{lookupResult.reason}</p>
             {lookupResult.digest ? (

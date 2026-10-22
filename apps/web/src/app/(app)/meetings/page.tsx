@@ -5,6 +5,7 @@ import { api } from '@/lib/api';
 import { useAuth } from '@/components/AuthProvider';
 import { useToast } from '@/components/Toast';
 import { useLiveRefresh } from '@/lib/live-refresh';
+import { Lang, enumLabel, roleTitle, tf } from '@/lib/i18n';
 
 type MeetingAction = {
   id: string;
@@ -55,33 +56,48 @@ const ENGAGEMENT_TYPES: EngagementType[] = [
   'Walk-in',
 ];
 
+const ENGAGEMENT_KEYS: Record<string, string> = {
+  'Diary booking': 'mtg_et_diary',
+  'Meeting request': 'mtg_et_request',
+  Invitation: 'mtg_et_invitation',
+  'Official visitor': 'mtg_et_visitor',
+  Delegation: 'mtg_et_delegation',
+  'Walk-in': 'mtg_et_walkin',
+};
+
+function engagementLabel(v: string, label: (k: string) => string) {
+  const k = ENGAGEMENT_KEYS[v];
+  return k ? label(k) : v;
+}
+
 function startOfToday() {
   const d = new Date();
   d.setHours(0, 0, 0, 0);
   return d;
 }
 
-function fmtRange(start?: string | null, end?: string | null) {
-  if (!start) return 'Time TBD';
+function fmtRange(
+  start: string | null | undefined,
+  end: string | null | undefined,
+  label: (k: string) => string,
+  locale?: string,
+) {
+  if (!start) return label('mtg_timeTbd');
   const s = new Date(start);
-  const date = s.toLocaleDateString(undefined, {
+  const date = s.toLocaleDateString(locale, {
     day: 'numeric',
     month: 'short',
     year: 'numeric',
   });
-  const t1 = s.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  const t1 = s.toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit' });
   if (!end) return `${date}, ${t1}`;
-  const t2 = new Date(end).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  const t2 = new Date(end).toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit' });
   return `${date}, ${t1} – ${t2}`;
 }
 
-function statusLabel(s: string) {
-  if (s === 'APPROVED') return 'Confirmed';
-  if (s === 'REQUESTED') return 'Requested';
-  if (s === 'DECLINED') return 'Declined';
-  if (s === 'COMPLETED') return 'Completed';
-  if (s === 'ARCHIVED') return 'Archived';
-  return s.replace(/_/g, ' ');
+function statusLabel(s: string, lang: Lang) {
+  if (s === 'APPROVED') return enumLabel(lang, 'CONFIRMED');
+  return enumLabel(lang, s);
 }
 
 function isCleared(m: Meeting) {
@@ -89,14 +105,14 @@ function isCleared(m: Meeting) {
   return ['CLEARED', 'VERIFIED', 'APPROVED', 'PASSED'].includes(s) || !!m.screeningBadge;
 }
 
-function participantsLine(m: Meeting) {
+function participantsLine(m: Meeting, label: (k: string) => string) {
   const brief = (m.brief || '').trim();
   if (brief) {
     const first = brief.split('\n')[0].trim();
     if (first.length <= 120) return first;
     return `${first.slice(0, 117)}…`;
   }
-  return 'Participants not recorded';
+  return label('mtg_participantsNotRecorded');
 }
 
 function engagementType(m: Meeting): string {
@@ -104,7 +120,8 @@ function engagementType(m: Meeting): string {
 }
 
 export default function MeetingsPage() {
-  const { user } = useAuth();
+  const { user, label, lang } = useAuth();
+  const locale = lang === 'ur' ? 'ur-PK' : undefined;
   const toast = useToast();
   const [items, setItems] = useState<Meeting[]>([]);
   const [showForm, setShowForm] = useState(false);
@@ -223,10 +240,10 @@ export default function MeetingsPage() {
           conflicts: res.conflicts || [],
           alternatives: res.alternatives || [],
         });
-        toast.error('Diary conflict — choose an alternative or force submit');
+        toast.error(label('mtg_toastConflict'));
         return;
       }
-      toast.success('Engagement booked / requested');
+      toast.success(label('mtg_toastBooked'));
       setShowForm(false);
       setConflictInfo(null);
       setForm({
@@ -242,7 +259,7 @@ export default function MeetingsPage() {
       });
       await load();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Create failed');
+      toast.error(err instanceof Error ? err.message : label('createFailed'));
     } finally {
       setBusy(false);
     }
@@ -250,7 +267,7 @@ export default function MeetingsPage() {
 
   async function addAction(meetingId: string) {
     if (!actionForm.title.trim()) {
-      toast.error('Action title required');
+      toast.error(label('mtg_toastActionTitle'));
       return;
     }
     const owner = staff.find((s) => s.id === actionForm.ownerId);
@@ -270,13 +287,12 @@ export default function MeetingsPage() {
       });
       toast.success(
         actionForm.promoteToDirection
-          ? 'Action linked to directions tracker'
-          : 'Action point recorded',
+          ? label('mtg_toastActionLinked') : label('mtg_toastActionRecorded'),
       );
       setActionForm({ title: '', ownerId: '', dueDate: '', promoteToDirection: true });
       await load();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Action failed');
+      toast.error(err instanceof Error ? err.message : label('mtg_actionFailed'));
     } finally {
       setBusy(false);
     }
@@ -289,10 +305,10 @@ export default function MeetingsPage() {
         method: 'POST',
         json: {},
       });
-      toast.success('Promoted to directions tracker');
+      toast.success(label('mtg_toastPromoted'));
       await load();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Promote failed');
+      toast.error(err instanceof Error ? err.message : label('mtg_promoteFailed'));
     } finally {
       setBusy(false);
     }
@@ -302,10 +318,10 @@ export default function MeetingsPage() {
     setBusy(true);
     try {
       await api(`/meetings/${id}/decide`, { method: 'POST', json: { approve } });
-      toast.success(approve ? 'Meeting confirmed' : 'Meeting declined');
+      toast.success(approve ? label('mtg_toastConfirmed') : label('mtg_toastDeclined'));
       await load();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Decision failed');
+      toast.error(err instanceof Error ? err.message : label('mtg_decisionFailed'));
     } finally {
       setBusy(false);
     }
@@ -318,10 +334,10 @@ export default function MeetingsPage() {
         method: 'POST',
         json: { minutes: 'Recorded on desk', outcome: 'Held', decision: 'Noted' },
       });
-      toast.success('Meeting marked complete');
+      toast.success(label('mtg_toastComplete'));
       await load();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Complete failed');
+      toast.error(err instanceof Error ? err.message : label('mtg_completeFailed'));
     } finally {
       setBusy(false);
     }
@@ -331,24 +347,25 @@ export default function MeetingsPage() {
     return (
       <li className="meet-row">
         <div className="meet-main">
-          <div className="meet-when">{fmtRange(m.startAt, m.endAt)}</div>
+          <div className="meet-when">{fmtRange(m.startAt, m.endAt, label, locale)}</div>
           <strong>{m.title}</strong>
           <div className="muted">
-            {participantsLine(m)} · {m.location || 'Location TBD'} · {engagementType(m)}
+            {participantsLine(m, label)} · {m.location || label('mtg_locationTbd')} ·{' '}
+            {engagementLabel(engagementType(m), label)}
           </div>
           <div className="meet-badges">
             {isCleared(m) ? (
-              <span className="meet-cleared">✓ Verified &amp; Cleared</span>
+              <span className="meet-cleared">✓ {label('mtg_verifiedCleared')}</span>
             ) : m.screeningStatus === 'PENDING' ? (
-              <span className="meet-pending-screen">Screening pending</span>
+              <span className="meet-pending-screen">{label('mtg_screeningPending')}</span>
             ) : null}
             {showStatus ? (
-              <span className={`meet-status ${m.status.toLowerCase()}`}>{statusLabel(m.status)}</span>
+              <span className={`meet-status ${m.status.toLowerCase()}`}>{statusLabel(m.status, lang)}</span>
             ) : null}
           </div>
         </div>
         <button type="button" className="btn" onClick={() => setOpenId(m.id)}>
-          Open
+          {label('open')}
         </button>
       </li>
     );
@@ -359,24 +376,25 @@ export default function MeetingsPage() {
       <div className="overview-hero">
         <div>
           <div className="eyebrow">
-            {user?.role === 'SPEAKER' ? "SPEAKER'S OFFICE" : 'OFFICE WORKFLOW'} · CONCEPT DEMO
+            {user?.role === 'SPEAKER' ? label('hero_speakerOffice') : label('hero_officeWorkflow')} ·{' '}
+            {label('hero_conceptDemo')}
           </div>
-          <h1>Meetings &amp; visitors</h1>
+          <h1>{label('mtg_title')}</h1>
           <p className="muted">
-            Meeting requests, confirmed diary bookings, briefings and outcomes stay together here.
+            {label('mtg_heroSub')}
           </p>
         </div>
         <button type="button" className="btn primary" onClick={() => setShowForm((v) => !v)}>
-          {showForm ? 'Close form' : '+ Book engagement'}
+          {showForm ? label('mtg_closeForm') : label('mtg_book')}
         </button>
       </div>
 
       {showForm ? (
         <div className="panel">
-          <h2>Book engagement</h2>
+          <h2>{label('mtg_bookTitle')}</h2>
           <form className="grid-form" onSubmit={create}>
             <label>
-              Title
+              {label('title')}
               <input
                 value={form.title}
                 onChange={(e) => setForm({ ...form, title: e.target.value })}
@@ -384,20 +402,20 @@ export default function MeetingsPage() {
               />
             </label>
             <label>
-              Engagement type
+              {label('mtg_engagementType')}
               <select
                 value={form.screeningNotes}
                 onChange={(e) => setForm({ ...form, screeningNotes: e.target.value })}
               >
                 {ENGAGEMENT_TYPES.map((t) => (
                   <option key={t} value={t}>
-                    {t}
+                    {engagementLabel(t, label)}
                   </option>
                 ))}
               </select>
             </label>
             <label>
-              Start
+              {label('mtg_start')}
               <input
                 type="datetime-local"
                 value={form.startAt}
@@ -405,7 +423,7 @@ export default function MeetingsPage() {
               />
             </label>
             <label>
-              End
+              {label('mtg_end')}
               <input
                 type="datetime-local"
                 value={form.endAt}
@@ -413,56 +431,56 @@ export default function MeetingsPage() {
               />
             </label>
             <label>
-              Location
+              {label('mtg_location')}
               <input
                 value={form.location}
                 onChange={(e) => setForm({ ...form, location: e.target.value })}
               />
             </label>
             <label>
-              Participants / brief
+              {label('mtg_participantsBrief')}
               <textarea
                 rows={3}
                 value={form.brief}
                 onChange={(e) => setForm({ ...form, brief: e.target.value })}
-                placeholder="Names or organisations attending"
+                placeholder={label('mtg_participantsPh')}
               />
             </label>
             <label>
-              Visitor CNIC
+              {label('mtg_cnic')}
               <input
                 value={form.screeningCnic}
                 onChange={(e) => setForm({ ...form, screeningCnic: e.target.value })}
               />
             </label>
             <label>
-              Screening
+              {label('mtg_screening')}
               <select
                 value={form.screeningStatus}
                 onChange={(e) => setForm({ ...form, screeningStatus: e.target.value })}
               >
-                <option value="PENDING">Pending</option>
-                <option value="CLEARED">Verified &amp; Cleared</option>
+                <option value="PENDING">{label('pending')}</option>
+                <option value="CLEARED">{label('mtg_verifiedCleared')}</option>
               </select>
             </label>
             <label>
-              Security badge no.
+              {label('mtg_badge')}
               <input
                 value={form.screeningBadge}
                 onChange={(e) => setForm({ ...form, screeningBadge: e.target.value })}
               />
             </label>
             <button type="submit" className="btn primary" disabled={busy}>
-              Submit
+              {label('submit')}
             </button>
           </form>
           {conflictInfo ? (
             <div style={{ marginTop: 16 }}>
-              <h3 style={{ margin: '0 0 8px', color: 'var(--pine)' }}>Schedule conflict</h3>
+              <h3 style={{ margin: '0 0 8px', color: 'var(--pine)' }}>{label('mtg_scheduleConflict')}</h3>
               <ul className="muted" style={{ paddingLeft: 18 }}>
                 {conflictInfo.conflicts.map((c) => (
                   <li key={c.id}>
-                    {c.title} · {fmtRange(c.startAt, c.endAt)}
+                    {c.title} · {fmtRange(c.startAt, c.endAt, label, locale)}
                   </li>
                 ))}
               </ul>
@@ -495,7 +513,7 @@ export default function MeetingsPage() {
                   disabled={busy}
                   onClick={(ev) => create(ev as unknown as FormEvent, true)}
                 >
-                  Force submit
+                  {label('mtg_forceSubmit')}
                 </button>
               </div>
             </div>
@@ -506,13 +524,13 @@ export default function MeetingsPage() {
       <div className="panel meet-upcoming-panel">
         <div className="meet-section-head">
           <div>
-            <div className="eyebrow">Next on the calendar</div>
-            <h2>Today and upcoming meetings</h2>
+            <div className="eyebrow">{label('mtg_nextOnCalendar')}</div>
+            <h2>{label('mtg_todayUpcoming')}</h2>
           </div>
-          <span className="meet-count">{upcoming.length} confirmed</span>
+          <span className="meet-count">{tf(lang, 'mtg_nConfirmed', { n: upcoming.length })}</span>
         </div>
         {upcoming.length === 0 ? (
-          <p className="muted">No confirmed upcoming meetings.</p>
+          <p className="muted">{label('mtg_noUpcoming')}</p>
         ) : (
           <ul className="meet-list">
             {upcoming.map((m) => (
@@ -526,13 +544,13 @@ export default function MeetingsPage() {
         <div className="panel">
           <div className="meet-section-head">
             <div>
-              <div className="eyebrow">Inbox</div>
-              <h2>Meeting requests awaiting your decision</h2>
+              <div className="eyebrow">{label('mtg_inboxEyebrow')}</div>
+              <h2>{label('mtg_awaitingDecision')}</h2>
             </div>
             <span className="meet-count">{pending.length}</span>
           </div>
           {pending.length === 0 ? (
-            <p className="muted">No pending requests.</p>
+            <p className="muted">{label('mtg_noPending')}</p>
           ) : (
             <ul className="meet-list">
               {pending.map((m) => (
@@ -545,13 +563,13 @@ export default function MeetingsPage() {
         <div className="panel">
           <div className="meet-section-head">
             <div>
-              <div className="eyebrow">History</div>
-              <h2>Past and declined</h2>
+              <div className="eyebrow">{label('mtg_history')}</div>
+              <h2>{label('mtg_pastDeclined')}</h2>
             </div>
             <span className="meet-count">{past.length}</span>
           </div>
           {past.length === 0 ? (
-            <p className="muted">No past engagements yet.</p>
+            <p className="muted">{label('mtg_noPast')}</p>
           ) : (
             <ul className="meet-list">
               {past.map((m) => (
@@ -567,62 +585,64 @@ export default function MeetingsPage() {
           <aside className="meet-drawer" onClick={(e) => e.stopPropagation()}>
             <div className="meet-section-head">
               <div>
-                <div className="eyebrow">{statusLabel(selected.status)}</div>
+                <div className="eyebrow">{statusLabel(selected.status, lang)}</div>
                 <h2>{selected.title}</h2>
               </div>
               <button type="button" className="btn" onClick={() => setOpenId(null)}>
-                Close
+                {label('close')}
               </button>
             </div>
-            <p className="muted">{fmtRange(selected.startAt, selected.endAt)}</p>
+            <p className="muted">{fmtRange(selected.startAt, selected.endAt, label, locale)}</p>
             <div className="meet-detail-grid">
               <div>
-                <span>Location</span>
+                <span>{label('mtg_location')}</span>
                 <strong>{selected.location || '—'}</strong>
               </div>
               <div>
-                <span>Type</span>
-                <strong>{engagementType(selected)}</strong>
+                <span>{label('type')}</span>
+                <strong>{engagementLabel(engagementType(selected), label)}</strong>
               </div>
               <div>
-                <span>Participants / brief</span>
+                <span>{label('mtg_participantsBrief')}</span>
                 <strong>{selected.brief || '—'}</strong>
               </div>
               <div>
-                <span>Requested by</span>
+                <span>{label('mtg_requestedBy')}</span>
                 <strong>{selected.createdBy?.displayName || '—'}</strong>
               </div>
               <div>
-                <span>Screening</span>
+                <span>{label('mtg_screening')}</span>
                 <strong>
                   {isCleared(selected)
-                    ? 'Verified & Cleared'
-                    : selected.screeningStatus || 'Not recorded'}
-                  {selected.screeningCnic ? ` · CNIC ${selected.screeningCnic}` : ''}
-                  {selected.screeningBadge ? ` · Badge ${selected.screeningBadge}` : ''}
+                    ? label('mtg_verifiedCleared')
+                    : selected.screeningStatus
+                      ? enumLabel(lang, selected.screeningStatus)
+                      : label('mtg_notRecorded')}
+                  {selected.screeningCnic ? ` · ${label('mtg_cnicShort')} ${selected.screeningCnic}` : ''}
+                  {selected.screeningBadge ? ` · ${label('mtg_badgeShort')} ${selected.screeningBadge}` : ''}
                 </strong>
               </div>
               {selected.outcome ? (
                 <div>
-                  <span>Outcome</span>
+                  <span>{label('outcome')}</span>
                   <strong>{selected.outcome}</strong>
                 </div>
               ) : null}
               {selected.minutes ? (
                 <div>
-                  <span>Minutes</span>
+                  <span>{label('mtg_minutes')}</span>
                   <strong>{selected.minutes}</strong>
                 </div>
               ) : null}
             </div>
 
             <div style={{ marginTop: 20 }}>
-              <div className="eyebrow">Action points → directions</div>
+              <div className="eyebrow">{label('mtg_actionPoints')}</div>
               <h3 style={{ margin: '4px 0 10px', fontFamily: 'var(--font-display)', color: 'var(--pine)' }}>
-                Follow-up tracker
+                {label('mtg_followUp')}
               </h3>
               {(selected.actions || []).length === 0 ? (
-                <p className="muted">No action points yet.</p>
+                <p className="muted">{label('mtg_noActions')}</p>
               ) : (
                 <ul className="meet-list">
                   {(selected.actions || []).map((a) => (
@@ -632,10 +652,10 @@ export default function MeetingsPage() {
                         <div className="muted">
                           {a.owner?.displayName || a.ownerName}
                           {a.dueDate
-                            ? ` · due ${new Date(a.dueDate).toLocaleDateString()}`
+                            ? ` · ${label('directions_due')} ${new Date(a.dueDate).toLocaleDateString(locale)}`
                             : ''}
                           {a.direction
-                            ? ` · Direction ${a.direction.status.replace(/_/g, ' ')}`
+                            ? ` · ${label('mtg_direction')} ${enumLabel(lang, a.direction.status)}`
                             : ''}
                         </div>
                       </div>
@@ -646,7 +666,7 @@ export default function MeetingsPage() {
                           disabled={busy}
                           onClick={() => promoteAction(selected.id, a.id)}
                         >
-                          → Directions
+                          {label('mtg_toDirections')}
                         </button>
                       ) : null}
                     </li>
@@ -656,29 +676,29 @@ export default function MeetingsPage() {
               {canManageActions ? (
                 <div className="grid-form" style={{ marginTop: 12 }}>
                   <label>
-                    New action
+                    {label('mtg_newAction')}
                     <input
                       value={actionForm.title}
                       onChange={(e) => setActionForm({ ...actionForm, title: e.target.value })}
-                      placeholder="What must be done"
+                      placeholder={label('mtg_whatToDo')}
                     />
                   </label>
                   <label>
-                    Owner
+                    {label('owner')}
                     <select
                       value={actionForm.ownerId}
                       onChange={(e) => setActionForm({ ...actionForm, ownerId: e.target.value })}
                     >
-                      <option value="">Select officer…</option>
+                      <option value="">{label('mtg_selectOfficer')}</option>
                       {staff.map((s) => (
                         <option key={s.id} value={s.id}>
-                          {s.displayName} ({s.role})
+                          {s.displayName} ({roleTitle(lang, s.role)})
                         </option>
                       ))}
                     </select>
                   </label>
                   <label>
-                    Due date
+                    {label('mtg_dueDate')}
                     <input
                       type="date"
                       value={actionForm.dueDate}
@@ -693,7 +713,7 @@ export default function MeetingsPage() {
                         setActionForm({ ...actionForm, promoteToDirection: e.target.checked })
                       }
                     />
-                    Create linked direction immediately
+                    {label('mtg_createLinked')}
                   </label>
                   <button
                     type="button"
@@ -701,7 +721,7 @@ export default function MeetingsPage() {
                     disabled={busy}
                     onClick={() => addAction(selected.id)}
                   >
-                    Add action point
+                    {label('mtg_addAction')}
                   </button>
                 </div>
               ) : null}
@@ -716,7 +736,7 @@ export default function MeetingsPage() {
                     disabled={busy}
                     onClick={() => decide(selected.id, true)}
                   >
-                    Confirm
+                    {label('confirm')}
                   </button>
                   <button
                     type="button"
@@ -724,7 +744,7 @@ export default function MeetingsPage() {
                     disabled={busy}
                     onClick={() => decide(selected.id, false)}
                   >
-                    Decline
+                    {label('mtg_decline')}
                   </button>
                 </>
               ) : null}
@@ -735,7 +755,7 @@ export default function MeetingsPage() {
                   disabled={busy}
                   onClick={() => complete(selected.id)}
                 >
-                  Mark complete
+                  {label('mtg_markComplete')}
                 </button>
               ) : null}
             </div>

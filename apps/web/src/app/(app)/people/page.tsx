@@ -8,6 +8,7 @@ import { useAuth } from '@/components/AuthProvider';
 import { useToast } from '@/components/Toast';
 import { roleAvatar } from '@/lib/avatars';
 import { useLiveRefresh, notifyDataChanged } from '@/lib/live-refresh';
+import { roleBlurb as roleBlurbL, roleTitle as roleTitleL, tf } from '@/lib/i18n';
 
 type Person = {
   id: string;
@@ -49,16 +50,18 @@ const emptyForm = {
   role: 'SPECIAL_SECRETARY' as Role,
 };
 
-function roleTitle(role: string) {
-  return ROLE_META[role as Role]?.title || role.replace(/_/g, ' ');
-}
 
-function roleBlurb(role: string) {
-  return ROLE_META[role as Role]?.blurb || '';
-}
 
 export default function PeoplePage() {
-  const { user } = useAuth();
+  const { user, label, lang } = useAuth();
+  const roleTitle = (r: string) =>
+    lang === 'ur'
+      ? roleTitleL(lang, r)
+      : ROLE_META[r as Role]?.title || r.replace(/_/g, ' ');
+  const roleBlurb = (r: string) =>
+    lang === 'ur'
+      ? roleBlurbL(lang, r) || ROLE_META[r as Role]?.blurb || ''
+      : ROLE_META[r as Role]?.blurb || '';
   const toast = useToast();
   const [people, setPeople] = useState<Person[]>([]);
   const [q, setQ] = useState('');
@@ -111,7 +114,7 @@ export default function PeoplePage() {
         roleBlurb(p.role).toLowerCase().includes(needle)
       );
     });
-  }, [people, q, roleFilter, showInactive]);
+  }, [people, q, roleFilter, showInactive, lang]);
 
   const editing = useMemo(
     () => people.find((p) => p.id === editId) || null,
@@ -139,13 +142,13 @@ export default function PeoplePage() {
     setBusy(true);
     try {
       await api('/users', { method: 'POST', json: form });
-      toast.success('User created');
+      toast.success(label('ppl_toastCreated'));
       setForm(emptyForm);
       setShowCreate(false);
       notifyDataChanged();
       await load();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Create failed');
+      toast.error(err instanceof Error ? err.message : label('createFailed'));
     } finally {
       setBusy(false);
     }
@@ -164,11 +167,11 @@ export default function PeoplePage() {
           role: edit.role,
         },
       });
-      toast.success('Profile updated');
+      toast.success(label('ppl_toastProfile'));
       notifyDataChanged();
       await load();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Update failed');
+      toast.error(err instanceof Error ? err.message : label('prs_updateFailed'));
     } finally {
       setBusy(false);
     }
@@ -178,11 +181,11 @@ export default function PeoplePage() {
     setBusy(true);
     try {
       await api(`/users/${id}`, { method: 'PATCH', json: { active } });
-      toast.success(active ? 'User activated' : 'User deactivated');
+      toast.success(active ? label('ppl_toastActivated') : label('ppl_toastDeactivated'));
       notifyDataChanged();
       await load();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Update failed');
+      toast.error(err instanceof Error ? err.message : label('prs_updateFailed'));
     } finally {
       setBusy(false);
     }
@@ -196,16 +199,16 @@ export default function PeoplePage() {
         { method: 'POST' },
       );
       if (res.stub || !res.ok) {
-        toast.success(res.message || 'LDAP stub — local directory only');
+        toast.success(res.message || label('ppl_toastStub'));
       } else {
-        toast.success(res.message || `Imported ${res.imported ?? 0}`);
+        toast.success(res.message || tf(lang, 'ppl_toastImported', { n: res.imported ?? 0 }));
         notifyDataChanged();
         await load();
       }
       const st = await api<LdapStatus>('/ldap/status').catch(() => null);
       setLdap(st);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Sync failed');
+      toast.error(err instanceof Error ? err.message : label('ppl_syncFailed'));
     } finally {
       setBusy(false);
     }
@@ -216,17 +219,17 @@ export default function PeoplePage() {
       <div className="overview-hero">
         <div>
           <div className="eyebrow">
-            {user?.role === 'SPEAKER' ? "SPEAKER'S OFFICE" : 'OFFICE WORKFLOW'} · DIRECTORY
+            {user?.role === 'SPEAKER' ? label('hero_speakerOffice') : label('hero_officeWorkflow')} ·{' '}
+            {label('ppl_eyebrowDirectory')}
           </div>
-          <h1>Staff directory</h1>
+          <h1>{label('people')}</h1>
           <p className="muted">
-            Local office accounts, roles and contacts. Live Active Directory / SSO remains Tier B
-            (LDAP stub available for Admin / DG IT).
+            {label('ppl_heroSub')}
           </p>
         </div>
         {isAdmin ? (
           <button type="button" className="btn primary" onClick={() => setShowCreate((v) => !v)}>
-            {showCreate ? 'Close form' : '+ Create user'}
+            {showCreate ? label('mtg_closeForm') : label('ppl_create')}
           </button>
         ) : null}
       </div>
@@ -234,19 +237,19 @@ export default function PeoplePage() {
       <div className="work-kpi-row">
         <div className="work-kpi">
           <strong>{kpis.total}</strong>
-          <span className="muted">Accounts</span>
+          <span className="muted">{label('ppl_kpiAccounts')}</span>
         </div>
         <div className="work-kpi">
           <strong>{kpis.active}</strong>
-          <span className="muted">Active</span>
+          <span className="muted">{label('active')}</span>
         </div>
         <div className="work-kpi">
           <strong>{kpis.mfa}</strong>
-          <span className="muted">MFA enabled</span>
+          <span className="muted">{label('ppl_kpiMfa')}</span>
         </div>
         <div className="work-kpi">
           <strong>{kpis.ldapLinked}</strong>
-          <span className="muted">LDAP-linked</span>
+          <span className="muted">{label('ppl_kpiLdap')}</span>
         </div>
       </div>
 
@@ -254,8 +257,8 @@ export default function PeoplePage() {
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="Search name, username, email or role"
-          aria-label="Search directory"
+          placeholder={label('ppl_searchPh')}
+          aria-label={label('ppl_searchAria')}
           style={{ flex: 1, minWidth: 200 }}
         />
         <label className="tiny muted" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -264,7 +267,7 @@ export default function PeoplePage() {
             checked={showInactive}
             onChange={(e) => setShowInactive(e.target.checked)}
           />
-          Show inactive
+          {label('ppl_showInactive')}
         </label>
       </div>
 
@@ -276,20 +279,20 @@ export default function PeoplePage() {
             className={roleFilter === f.key ? 'active' : ''}
             onClick={() => setRoleFilter(f.key)}
           >
-            {f.label}
+            {label(`ppl_rf_${f.key}`)}
           </button>
         ))}
       </div>
 
       {showCreate && isAdmin ? (
         <div className="panel">
-          <h2>Create local user</h2>
+          <h2>{label('ppl_createTitle')}</h2>
           <p className="muted" style={{ marginTop: 0 }}>
-            Password policy: 12+ chars with upper, lower, digit and special (unless demo weak passwords).
+            {label('ppl_pwPolicy')}
           </p>
           <form className="grid-form" onSubmit={create}>
             <label>
-              Username
+              {label('username')}
               <input
                 value={form.username}
                 onChange={(e) => setForm({ ...form, username: e.target.value })}
@@ -299,7 +302,7 @@ export default function PeoplePage() {
               />
             </label>
             <label>
-              Display name
+              {label('ppl_displayName')}
               <input
                 value={form.displayName}
                 onChange={(e) => setForm({ ...form, displayName: e.target.value })}
@@ -307,7 +310,7 @@ export default function PeoplePage() {
               />
             </label>
             <label>
-              Email
+              {label('ppl_email')}
               <input
                 type="email"
                 value={form.email}
@@ -316,7 +319,7 @@ export default function PeoplePage() {
               />
             </label>
             <label>
-              Temporary password
+              {label('ppl_tempPassword')}
               <input
                 type="password"
                 minLength={6}
@@ -326,7 +329,7 @@ export default function PeoplePage() {
               />
             </label>
             <label>
-              Role
+              {label('ppl_role')}
               <select
                 value={form.role}
                 onChange={(e) => setForm({ ...form, role: e.target.value as Role })}
@@ -339,7 +342,7 @@ export default function PeoplePage() {
               </select>
             </label>
             <button type="submit" className="btn primary" disabled={busy}>
-              Create account
+              {label('ppl_createAccount')}
             </button>
           </form>
         </div>
@@ -347,13 +350,13 @@ export default function PeoplePage() {
 
       {editing && isAdmin ? (
         <div className="panel remote-preview-panel">
-          <div className="eyebrow">Edit account</div>
+          <div className="eyebrow">{label('ppl_editAccount')}</div>
           <h2>
             {editing.username} · {roleTitle(editing.role)}
           </h2>
           <form className="grid-form" onSubmit={saveEdit}>
             <label>
-              Display name
+              {label('ppl_displayName')}
               <input
                 value={edit.displayName}
                 onChange={(e) => setEdit({ ...edit, displayName: e.target.value })}
@@ -361,7 +364,7 @@ export default function PeoplePage() {
               />
             </label>
             <label>
-              Email
+              {label('ppl_email')}
               <input
                 type="email"
                 value={edit.email}
@@ -370,7 +373,7 @@ export default function PeoplePage() {
               />
             </label>
             <label>
-              Role
+              {label('ppl_role')}
               <select
                 value={edit.role}
                 onChange={(e) => setEdit({ ...edit, role: e.target.value as Role })}
@@ -384,7 +387,7 @@ export default function PeoplePage() {
             </label>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <button type="submit" className="btn primary" disabled={busy}>
-                Save
+                {label('save')}
               </button>
               {editing.active !== false ? (
                 <button
@@ -393,7 +396,7 @@ export default function PeoplePage() {
                   disabled={busy || editing.id === user?.id}
                   onClick={() => setActive(editing.id, false)}
                 >
-                  Deactivate
+                  {label('ppl_deactivate')}
                 </button>
               ) : (
                 <button
@@ -402,11 +405,11 @@ export default function PeoplePage() {
                   disabled={busy}
                   onClick={() => setActive(editing.id, true)}
                 >
-                  Activate
+                  {label('ppl_activate')}
                 </button>
               )}
               <button type="button" className="btn" onClick={() => setEditId(null)}>
-                Close
+                {label('close')}
               </button>
             </div>
           </form>
@@ -431,7 +434,7 @@ export default function PeoplePage() {
               )}
               <div className="people-role">
                 {roleTitle(p.role)}
-                {p.active === false ? ' · Inactive' : ''}
+                {p.active === false ? ` · ${label('ppl_inactive')}` : ''}
                 {p.mfaEnabled ? ' · MFA' : ''}
               </div>
               <h2>{p.displayName}</h2>
@@ -444,12 +447,12 @@ export default function PeoplePage() {
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
                 {canMessage ? (
                   <Link href={`/messages?to=${p.id}`} className="btn people-msg-btn">
-                    Message
+                    {label('ppl_message')}
                   </Link>
                 ) : null}
                 {isAdmin ? (
                   <button type="button" className="btn" onClick={() => setEditId(p.id)}>
-                    Manage
+                    {label('ppl_manage')}
                   </button>
                 ) : null}
               </div>
@@ -460,29 +463,29 @@ export default function PeoplePage() {
 
       {visible.length === 0 ? (
         <p className="muted" style={{ marginTop: 8 }}>
-          No staff match this filter.
+          {label('ppl_noMatch')}
         </p>
       ) : null}
 
       <div className="people-disclaimer">
-        Local directory is authoritative for this pilot. Availability is not inferred from workload.
+        {label('ppl_disclaimer')}
       </div>
 
       {isAdmin && ldap ? (
         <div className="panel" style={{ marginTop: 16 }}>
-          <div className="eyebrow">Directory connector · Tier {ldap.tier || 'B'}</div>
-          <h2>LDAP / Active Directory</h2>
+          <div className="eyebrow">{label('ppl_connector')} · {label('ppl_tier')} {ldap.tier || 'B'}</div>
+          <h2>{label('ppl_ldapTitle')}</h2>
           <p className="muted">{ldap.message}</p>
           <div className="work-filters" style={{ marginBottom: 12 }}>
             <span className={`work-status ${ldap.mode === 'stub' ? 'draft' : ldap.ready ? 'ok' : 'warn'}`}>
-              Mode: {ldap.mode}
+              {label('ppl_mode')}: {ldap.mode}
             </span>
             <span className="muted tiny">
-              {ldap.enabled ? `URL set: ${ldap.url ? 'yes' : 'no'}` : 'LDAP_ENABLED=false'}
+              {ldap.enabled ? `${label('ppl_urlSet')}: ${ldap.url ? label('yes') : label('no')}` : 'LDAP_ENABLED=false'}
             </span>
           </div>
           <button type="button" className="btn" disabled={busy} onClick={runLdapSync}>
-            {ldap.enabled ? 'Sync directory from AD' : 'Test sync (stub)'}
+            {ldap.enabled ? label('ppl_syncAd') : label('ppl_testSync')}
           </button>
         </div>
       ) : null}
