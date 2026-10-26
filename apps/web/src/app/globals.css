@@ -552,7 +552,19 @@ label {
   box-shadow: var(--shadow);
   margin-bottom: 18px;
   padding: 22px;
+  padding-inline: 22px;
   overflow: hidden;
+  text-align: start;
+}
+
+/* Logical property helpers — reduce LTR-only hardcoding under [dir=rtl] */
+html[dir='rtl'] .panel-head,
+html[dir='rtl'] .row {
+  flex-direction: row-reverse;
+}
+html[dir='rtl'] .stats,
+html[dir='rtl'] .grid-form {
+  direction: rtl;
 }
 /* i18n RTL — logical properties for panels (progressive enhancement) */
 @supports (padding-inline: 1px) {
