@@ -21,11 +21,15 @@ export class AuthService {
     private audit: AuditService,
   ) {}
 
+  private hardened() {
+    return process.env.PILOT_MODE === 'true' || process.env.NODE_ENV === 'production';
+  }
+
   private accessSecret() {
     const s = process.env.JWT_ACCESS_SECRET;
     if (!s || s.length < 32) {
-      if (process.env.NODE_ENV === 'production') {
-        throw new Error('JWT_ACCESS_SECRET must be set (min 32 chars) in production');
+      if (this.hardened()) {
+        throw new Error('JWT_ACCESS_SECRET must be set (min 32 chars) in PILOT_MODE/production');
       }
       return 'dev-access-secret-change-me-32chars!!';
     }
@@ -34,8 +38,8 @@ export class AuthService {
   private refreshSecret() {
     const s = process.env.JWT_REFRESH_SECRET;
     if (!s || s.length < 32) {
-      if (process.env.NODE_ENV === 'production') {
-        throw new Error('JWT_REFRESH_SECRET must be set (min 32 chars) in production');
+      if (this.hardened()) {
+        throw new Error('JWT_REFRESH_SECRET must be set (min 32 chars) in PILOT_MODE/production');
       }
       return 'dev-refresh-secret-change-me-32chars!';
     }
@@ -54,8 +58,11 @@ export class AuthService {
     if (!ok) throw new UnauthorizedException('Invalid credentials');
 
     const mfaRequired = process.env.MFA_REQUIRED !== 'false';
-    // TEMP: skip login TOTP when MFA_SKIP_LOGIN_TOTP=true (demo convenience)
-    const skipLoginTotp = process.env.MFA_SKIP_LOGIN_TOTP === 'true';
+    // Demo-only: MFA_SKIP_LOGIN_TOTP=true. Ignored in pilot/production (S1-05).
+    const pilotHardened =
+      process.env.PILOT_MODE === 'true' || process.env.NODE_ENV === 'production';
+    const skipLoginTotp =
+      process.env.MFA_SKIP_LOGIN_TOTP === 'true' && !pilotHardened;
     if (mfaRequired && user.mfaEnabled && !skipLoginTotp) {
       if (!totpCode || !user.mfaSecretEnc) throw new UnauthorizedException('MFA code required');
       const secret = this.crypto.decryptSecret(user.mfaSecretEnc);
@@ -93,18 +100,19 @@ export class AuthService {
   }
 
   async issueTokens(userId: string) {
+    const accessTtl = process.env.ACCESS_TOKEN_TTL || '7d';
     const accessToken = await this.jwt.signAsync(
       { sub: userId },
-      { secret: this.accessSecret(), expiresIn: (process.env.ACCESS_TOKEN_TTL || '15m') as `${number}m` },
+      { secret: this.accessSecret(), expiresIn: accessTtl as `${number}d` },
     );
     const refreshRaw = randomBytes(48).toString('hex');
     const tokenHash = this.crypto.sha256(refreshRaw);
-    const days = 7;
+    const refreshMs = parseEnvTtlMs(process.env.REFRESH_TOKEN_TTL, 30 * 86400_000);
     await this.prisma.refreshToken.create({
       data: {
         userId,
         tokenHash,
-        expiresAt: new Date(Date.now() + days * 86400_000),
+        expiresAt: new Date(Date.now() + refreshMs),
       },
     });
     return { accessToken, refreshToken: refreshRaw };
@@ -148,8 +156,19 @@ export class AuthService {
     return { ok: true };
   }
 
-  async beginMfa(userId: string) {
+  async beginMfa(userId: string, opts?: { forceReset?: boolean; totpCode?: string }) {
     const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
+    // Do not wipe an enrolled MFA secret unless caller proves current TOTP (or force for first setup).
+    if (user.mfaEnabled && user.mfaSecretEnc) {
+      if (!opts?.forceReset) {
+        throw new BadRequestException('MFA already enabled — confirm with current code to re-enrol');
+      }
+      if (!opts.totpCode) throw new BadRequestException('Current MFA code required to re-enrol');
+      const existing = this.crypto.decryptSecret(user.mfaSecretEnc);
+      if (!authenticator.check(opts.totpCode, existing)) {
+        throw new UnauthorizedException('Invalid MFA code');
+      }
+    }
     const secret = authenticator.generateSecret();
     const enc = this.crypto.encryptSecret(secret);
     await this.prisma.user.update({
@@ -179,4 +198,15 @@ export class AuthService {
     });
     return { ok: true };
   }
+}
+
+function parseEnvTtlMs(raw: string | undefined, fallbackMs: number) {
+  if (!raw) return fallbackMs;
+  const m = String(raw).trim().match(/^(\d+)(ms|s|m|h|d)$/i);
+  if (!m) return fallbackMs;
+  const n = Number(m[1]);
+  const unit = m[2].toLowerCase();
+  const mult =
+    unit === 'ms' ? 1 : unit === 's' ? 1000 : unit === 'm' ? 60_000 : unit === 'h' ? 3_600_000 : 86_400_000;
+  return n * mult;
 }

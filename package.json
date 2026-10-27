@@ -14,6 +14,7 @@
     "db:migrate": "npm run prisma:migrate -w @gow/api",
     "db:push": "npm run prisma:push -w @gow/api",
     "db:seed": "npm run prisma:seed -w @gow/api",
+    "prepare:testers": "npm run prepare:testers -w @gow/api",
     "db:local": "npm run db:local -w @gow/api",
     "smoke": "npm run smoke -w @gow/api",
     "lint": "npm run lint -w @gow/api && npm run lint -w @gow/web"

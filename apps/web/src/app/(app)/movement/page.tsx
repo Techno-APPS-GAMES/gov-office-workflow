@@ -1,10 +1,12 @@
 'use client';
 
 import Link from 'next/link';
-import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '@/lib/api';
 import { useAuth } from '@/components/AuthProvider';
 import { useToast } from '@/components/Toast';
+import { useLiveRefresh } from '@/lib/live-refresh';
+import { enumLabel, tf } from '@/lib/i18n';
 
 type Person = { id?: string; displayName: string; role?: string };
 type MatterList = {
@@ -49,15 +51,8 @@ type MatterDetail = MatterList & {
   journeyEvents?: JourneyEvent[];
 };
 
-function pretty(s: string) {
-  return s
-    .replace(/_/g, ' ')
-    .toLowerCase()
-    .replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
-function fmtDate(iso?: string | null) {
-  if (!iso) return 'Pending';
+function fmtDate(iso: string | null | undefined, pendingText: string) {
+  if (!iso) return pendingText;
   return new Date(iso).toLocaleString(undefined, {
     day: 'numeric',
     month: 'short',
@@ -77,9 +72,10 @@ function fmtShort(iso?: string | null) {
 }
 
 export default function MovementPage() {
-  const { user } = useAuth();
+  const { user, lang, label } = useAuth();
   const toast = useToast();
   const [matters, setMatters] = useState<MatterList[]>([]);
+  const [listError, setListError] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<MatterDetail | null>(null);
   const [detailError, setDetailError] = useState('');
@@ -89,38 +85,76 @@ export default function MovementPage() {
   const [vaultPw, setVaultPw] = useState('');
   const [busy, setBusy] = useState(false);
   const [confBannerOpen, setConfBannerOpen] = useState(true);
+  const [returnRemarks, setReturnRemarks] = useState('');
+  const [showReturn, setShowReturn] = useState(false);
+  const [people, setPeople] = useState<{ id: string; displayName: string }[]>([]);
+  const [routeTo, setRouteTo] = useState('');
+  const [procedure, setProcedure] = useState('Forward for action');
+  const [routeDue, setRouteDue] = useState('');
+  const [showForward, setShowForward] = useState(false);
+  const labelRef = useRef(label);
+  labelRef.current = label;
+  const toastRef = useRef(toast);
+  toastRef.current = toast;
 
   const loadList = useCallback(async () => {
-    const all = await api<MatterList[]>('/files');
-    setMatters(all);
-    setSelectedId((prev) => prev || all[0]?.id || null);
-  }, []);
-
-  useEffect(() => {
-    loadList().catch(() => setMatters([]));
-  }, [loadList]);
-
-  const loadDetail = useCallback(async (id: string) => {
-    setDetailError('');
-    setDetail(null);
     try {
-      const m = await api<MatterDetail>(`/files/${id}`);
-      setDetail(m);
-      const steps = m.routeSteps || [];
-      const active =
-        steps.find((s) => s.status === 'AWAITING_RECEIPT' || s.status === 'IN_PROGRESS') ||
-        steps[steps.length - 1];
-      setStepId(active?.id || null);
+      const all = await api<MatterList[]>('/files');
+      setMatters(all);
+      setListError('');
+      setSelectedId((prev) => prev || all[0]?.id || null);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Unable to load matter';
-      setDetailError(msg);
-      setDetail(null);
+      const msg = err instanceof Error ? err.message : labelRef.current('loadFailed');
+      setListError(msg);
+      toastRef.current.error(msg);
     }
   }, []);
 
   useEffect(() => {
+    void loadList();
+  }, [loadList]);
+
+  useEffect(() => {
+    api<{ id: string; displayName: string }[]>('/users')
+      .then(setPeople)
+      .catch(() => undefined);
+  }, []);
+
+  const loadDetail = useCallback(
+    async (id: string, soft = false) => {
+      if (!soft) {
+        setDetailError('');
+        setDetail(null);
+      }
+      try {
+        const m = await api<MatterDetail>(`/files/${id}`);
+        setDetail(m);
+        setDetailError('');
+        const steps = m.routeSteps || [];
+        const active =
+          steps.find((s) => s.status === 'AWAITING_RECEIPT' || s.status === 'IN_PROGRESS') ||
+          steps[steps.length - 1];
+        setStepId(active?.id || null);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : labelRef.current('mv_unableLoad');
+        setDetailError(msg);
+        if (!soft) setDetail(null);
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
     if (selectedId) loadDetail(selectedId);
   }, [selectedId, loadDetail]);
+
+  useLiveRefresh(
+    async () => {
+      await loadList();
+      if (selectedId) await loadDetail(selectedId, true);
+    },
+    [loadList, loadDetail, selectedId],
+  );
 
   const stats = useMemo(() => {
     const uid = user?.id;
@@ -159,18 +193,18 @@ export default function MovementPage() {
     activeStep?.fromUser?.displayName ||
     detail?.holder?.displayName ||
     selectedList?.holder?.displayName ||
-    'previous officer';
+    label('mv_previousOfficer');
 
   async function confirmReceipt() {
     if (!selectedId) return;
     setBusy(true);
     try {
       await api(`/files/${selectedId}/acknowledge`, { method: 'POST' });
-      toast.success('Receipt confirmed');
+      toast.success(label('mv_toastReceipt'));
       await loadList();
       await loadDetail(selectedId);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed');
+      toast.error(err instanceof Error ? err.message : label('cm_failed'));
     } finally {
       setBusy(false);
     }
@@ -182,13 +216,59 @@ export default function MovementPage() {
     try {
       await api(`/files/${selectedId}/complete-procedure`, {
         method: 'POST',
-        json: { outcome: 'Procedure complete' },
+        json: { outcome: 'PROCEDURE_COMPLETE' },
       });
-      toast.success('Procedure completed');
+      toast.success(label('mv_toastProcDone'));
       await loadList();
       await loadDetail(selectedId);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed');
+      toast.error(err instanceof Error ? err.message : label('cm_failed'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function forwardFile(e: FormEvent) {
+    e.preventDefault();
+    if (!selectedId) return;
+    setBusy(true);
+    try {
+      await api(`/files/${selectedId}/route`, {
+        method: 'POST',
+        json: {
+          toUserId: routeTo,
+          procedure,
+          ...(routeDue ? { dueDate: routeDue } : {}),
+        },
+      });
+      toast.success(label('fd_toastRouted'));
+      setShowForward(false);
+      setRouteTo('');
+      await loadList();
+      await loadDetail(selectedId);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : label('cm_failed'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function returnWithRemarks(e: FormEvent) {
+    e.preventDefault();
+    if (!selectedId) return;
+    setBusy(true);
+    try {
+      await api(`/files/${selectedId}/return`, {
+        method: 'POST',
+        json: { remarks: returnRemarks },
+      });
+      toast.success(label('mv_toastReturned'));
+      setReturnRemarks('');
+      setShowReturn(false);
+      await loadList();
+      await loadDetail(selectedId);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : label('mv_returnFailed'));
     } finally {
       setBusy(false);
     }
@@ -203,12 +283,12 @@ export default function MovementPage() {
         method: 'POST',
         json: { password: vaultPw },
       });
-      toast.success('Vault unlocked');
+      toast.success(label('files_unlocked'));
       setVaultPw('');
       await loadList();
       await loadDetail(selectedId);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Unlock failed');
+      toast.error(err instanceof Error ? err.message : label('cm_unlockFailed'));
     } finally {
       setBusy(false);
     }
@@ -219,12 +299,11 @@ export default function MovementPage() {
       <div className="overview-hero">
         <div>
           <div className="eyebrow">
-            {user?.role === 'SPEAKER' ? "SPEAKER'S OFFICE" : 'OFFICE WORKFLOW'} · CONCEPT DEMO
+            {user?.role === 'SPEAKER' ? label('cm_speakerOffice') : label('cm_officeWorkflow')} ·{' '}
+            {label('cm_conceptDemo')}
           </div>
-          <h1>File movement</h1>
-          <p className="muted">
-            Track every handoff, confirm receipts, and inspect the live procedure route.
-          </p>
+          <h1>{label('movement')}</h1>
+          <p className="muted">{label('mv_heroSub')}</p>
         </div>
       </div>
 
@@ -233,24 +312,24 @@ export default function MovementPage() {
           <span className="movement-stat-icon gold">📁</span>
           <div>
             <div className="movement-stat-value">{stats.open}</div>
-            <div className="movement-stat-label">Open in view</div>
-            <div className="muted">Active queue matters</div>
+            <div className="movement-stat-label">{label('mv_statOpen')}</div>
+            <div className="muted">{label('mv_statOpenSub')}</div>
           </div>
         </div>
         <div className="movement-stat">
           <span className="movement-stat-icon sand">⏳</span>
           <div>
             <div className="movement-stat-value">{stats.waiting}</div>
-            <div className="movement-stat-label">Waiting for your receipt</div>
-            <div className="muted">Pending confirmation</div>
+            <div className="movement-stat-label">{label('mv_statWaiting')}</div>
+            <div className="muted">{label('mv_statWaitingSub')}</div>
           </div>
         </div>
         <div className="movement-stat">
           <span className="movement-stat-icon bolt">⚡</span>
           <div>
             <div className="movement-stat-value">{stats.procedures}</div>
-            <div className="movement-stat-label">Your procedures in progress</div>
-            <div className="muted">Active desk actions</div>
+            <div className="movement-stat-label">{label('mv_statProc')}</div>
+            <div className="muted">{label('mv_statProcSub')}</div>
           </div>
         </div>
       </div>
@@ -262,9 +341,9 @@ export default function MovementPage() {
           onClick={() => setConfBannerOpen((v) => !v)}
         >
           <span>
-            Confidential files needing a password · {stats.confidentialLocked.length}
+            {tf(lang, 'mv_confBanner', { count: stats.confidentialLocked.length })}
           </span>
-          <span className="muted">{confBannerOpen ? 'Hide' : 'Show'}</span>
+          <span className="muted">{confBannerOpen ? label('mv_hide') : label('mv_show')}</span>
         </button>
       )}
       {confBannerOpen && stats.confidentialLocked.length > 0 && (
@@ -277,7 +356,7 @@ export default function MovementPage() {
               onClick={() => setSelectedId(m.id)}
             >
               <strong>{m.diaryNo}</strong>
-              <span className="muted">Locked · unlock in vault or below</span>
+              <span className="muted">{label('mv_lockedHint')}</span>
             </button>
           ))}
         </div>
@@ -285,8 +364,8 @@ export default function MovementPage() {
 
       <div className="movement-desk">
         <aside className="movement-list panel">
-          <div className="eyebrow">Oversight</div>
-          <h2>Files under oversight</h2>
+          <div className="eyebrow">{label('mv_oversight')}</div>
+          <h2>{label('mv_listTitle')}</h2>
           <div className="movement-list-scroll">
             {matters.map((m) => (
               <button
@@ -297,32 +376,36 @@ export default function MovementPage() {
               >
                 <div className="movement-list-ref">
                   <span>{m.diaryNo}</span>
-                  <span className={`badge ${m.status}`}>{pretty(m.status)}</span>
+                  <span className={`badge ${m.status}`}>{enumLabel(lang, m.status)}</span>
                 </div>
                 <strong>{m.subject}</strong>
-                <div className="muted">{m.holder?.displayName || 'Unassigned'}</div>
+                <div className="muted">{m.holder?.displayName || label('unassigned')}</div>
               </button>
             ))}
-            {!matters.length && <p className="muted">No files under oversight.</p>}
+            {listError && !matters.length ? (
+              <div className="panel error">{listError}</div>
+            ) : (
+              !matters.length && <p className="muted">{label('mv_listEmpty')}</p>
+            )}
           </div>
         </aside>
 
         <section className="movement-detail">
           {!selectedList ? (
             <div className="panel">
-              <p className="muted">Select a file to inspect its movement.</p>
+              <p className="muted">{label('mv_selectFile')}</p>
             </div>
           ) : (
             <>
               <div className="panel movement-detail-head">
                 <div className="movement-detail-meta">
                   <div className="eyebrow">
-                    {selectedList.diaryNo} · {pretty(selectedList.classification)}
+                    {selectedList.diaryNo} · {enumLabel(lang, selectedList.classification)}
                   </div>
                   <h2>
                     {detailError.includes('locked') ||
                     (selectedList.classification === 'CONFIDENTIAL' && !selectedList.vaultUnlocked && !detail)
-                      ? 'Protected confidential record'
+                      ? label('mv_protected')
                       : detail?.subject || selectedList.subject}
                   </h2>
                   <p className="muted">
@@ -333,19 +416,19 @@ export default function MovementPage() {
 
                 <div className="movement-fact-grid">
                   <div>
-                    <span>Current holder</span>
+                    <span>{label('mv_currentHolder')}</span>
                     <strong>{detail?.holder?.displayName || selectedList.holder?.displayName || '—'}</strong>
                   </div>
                   <div>
-                    <span>File status</span>
+                    <span>{label('mv_fileStatus')}</span>
                     <strong>
                       <span className={`badge ${selectedList.status}`}>
-                        {pretty(detail?.status || selectedList.status)}
+                        {enumLabel(lang, detail?.status || selectedList.status)}
                       </span>
                     </strong>
                   </div>
                   <div>
-                    <span>Current procedure</span>
+                    <span>{label('mv_currentProcedure')}</span>
                     <strong>{currentProcedure}</strong>
                   </div>
                 </div>
@@ -356,23 +439,23 @@ export default function MovementPage() {
                     !detail)) && (
                   <form className="movement-action-box" onSubmit={unlockVault}>
                     <div>
-                      <div className="eyebrow">Vault required</div>
-                      <p>Enter the file password to inspect this confidential handoff.</p>
+                      <div className="eyebrow">{label('mv_vaultRequired')}</div>
+                      <p>{label('mv_vaultRequiredHelp')}</p>
                     </div>
                     <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
                       <input
                         type="password"
-                        placeholder="File password"
+                        placeholder={label('cm_filePassword')}
                         value={vaultPw}
                         onChange={(e) => setVaultPw(e.target.value)}
                         minLength={12}
                         required
                       />
                       <button className="btn primary" type="submit" disabled={busy}>
-                        Unlock & open
+                        {label('mv_unlockOpen')}
                       </button>
                       <Link className="btn" href="/vault">
-                        Open vault
+                        {label('mv_openVault')}
                       </Link>
                     </div>
                   </form>
@@ -381,8 +464,8 @@ export default function MovementPage() {
                 {needsMyReceipt && (
                   <div className="movement-action-box">
                     <div>
-                      <div className="eyebrow">Your next action</div>
-                      <p>Confirm receipt from {pendingFrom}.</p>
+                      <div className="eyebrow">{label('mv_nextAction')}</div>
+                      <p>{tf(lang, 'mv_confirmFrom', { name: pendingFrom })}</p>
                     </div>
                     <button
                       type="button"
@@ -390,7 +473,7 @@ export default function MovementPage() {
                       onClick={confirmReceipt}
                       disabled={busy}
                     >
-                      Confirm file receipt
+                      {label('mv_confirmFileReceipt')}
                     </button>
                   </div>
                 )}
@@ -398,33 +481,106 @@ export default function MovementPage() {
                 {myInProgress && (
                   <div className="movement-action-box">
                     <div>
-                      <div className="eyebrow">Your next action</div>
-                      <p>Complete your procedure on this file.</p>
+                      <div className="eyebrow">{label('mv_nextAction')}</div>
+                      <p>{label('mv_completeOrReturn')}</p>
                     </div>
-                    <button
-                      type="button"
-                      className="btn primary movement-action-btn"
-                      onClick={completeProcedure}
-                      disabled={busy}
-                    >
-                      Complete procedure
-                    </button>
+                    <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+                      <button
+                        type="button"
+                        className="btn primary movement-action-btn"
+                        onClick={completeProcedure}
+                        disabled={busy}
+                      >
+                        {label('files_completeProcedure')}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn movement-action-btn"
+                        onClick={() => setShowReturn((v) => !v)}
+                        disabled={busy}
+                      >
+                        {label('files_returnFile')}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn movement-action-btn"
+                        onClick={() => setShowForward((v) => !v)}
+                        disabled={busy}
+                      >
+                        {label('fd_routeBtn')}
+                      </button>
+                    </div>
+                    {showForward && (
+                      <form
+                        className="grid-form"
+                        style={{ marginTop: 12, width: '100%' }}
+                        onSubmit={forwardFile}
+                      >
+                        <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+                          <select
+                            value={routeTo}
+                            onChange={(e) => setRouteTo(e.target.value)}
+                            required
+                          >
+                            <option value="">{label('fd_selectOfficer')}</option>
+                            {people.map((p) => (
+                              <option key={p.id} value={p.id}>
+                                {p.displayName}
+                              </option>
+                            ))}
+                          </select>
+                          <input
+                            value={procedure}
+                            onChange={(e) => setProcedure(e.target.value)}
+                            required
+                            placeholder={label('fd_procedure')}
+                          />
+                          <input
+                            type="date"
+                            value={routeDue}
+                            min={new Date().toISOString().slice(0, 10)}
+                            onChange={(e) => setRouteDue(e.target.value)}
+                            title={label('fd_dueOptional')}
+                          />
+                          <button className="btn primary" type="submit" disabled={busy}>
+                            {label('fd_routeBtn')}
+                          </button>
+                        </div>
+                      </form>
+                    )}
+                    {showReturn && (
+                      <form className="grid-form" style={{ marginTop: 12, width: '100%' }} onSubmit={returnWithRemarks}>
+                        <div className="field">
+                          <label>{label('mv_remarksMin')}</label>
+                          <textarea
+                            rows={3}
+                            value={returnRemarks}
+                            onChange={(e) => setReturnRemarks(e.target.value)}
+                            minLength={10}
+                            required
+                            placeholder={label('mv_returnPlaceholder')}
+                          />
+                        </div>
+                        <button className="btn primary" type="submit" disabled={busy}>
+                          {label('mv_confirmReturn')}
+                        </button>
+                      </form>
+                    )}
                   </div>
                 )}
 
                 <div className="movement-detail-footer">
                   <span className="muted">
-                    Due{' '}
-                    {activeStep?.dueDate
-                      ? fmtShort(activeStep.dueDate)
-                      : 'not set'}
+                    {tf(lang, 'mv_due', {
+                      date: activeStep?.dueDate ? fmtShort(activeStep.dueDate) : label('mv_notSet'),
+                    })}
                   </span>
                   <div className="row" style={{ gap: 8 }}>
                     <Link className="btn" href={`/files/${selectedList.id}`}>
-                      Open file details
+                      {label('mv_openFileDetails')}
                     </Link>
                     <Link className="btn" href="/ai">
-                      AI helper
+                      {label('ai')}
                     </Link>
                   </div>
                 </div>
@@ -433,10 +589,10 @@ export default function MovementPage() {
               {detail && (
                 <>
                   <div className="panel">
-                    <div className="eyebrow">Route</div>
-                    <h2 style={{ marginTop: 4 }}>Choose a handoff to inspect</h2>
+                    <div className="eyebrow">{label('mv_route')}</div>
+                    <h2 style={{ marginTop: 4 }}>{label('mv_chooseHandoff')}</h2>
                     {steps.length === 0 ? (
-                      <p className="muted">No route steps yet — file has not been handed off.</p>
+                      <p className="muted">{label('mv_noRouteSteps')}</p>
                     ) : (
                       <div className="movement-route">
                         {steps.map((s, i) => (
@@ -451,7 +607,7 @@ export default function MovementPage() {
                             <span className="movement-route-num">{i + 1}</span>
                             <strong>{s.procedure}</strong>
                             <span className="muted">
-                              {s.toUser?.displayName || 'Officer'}
+                              {s.toUser?.displayName || label('officer')}
                             </span>
                           </button>
                         ))}
@@ -463,37 +619,39 @@ export default function MovementPage() {
                         <div className="movement-step-head">
                           <h3>{activeStep.procedure}</h3>
                           <span className={`badge ${activeStep.status}`}>
-                            {pretty(activeStep.status)}
+                            {enumLabel(lang, activeStep.status)}
                           </span>
                         </div>
                         <div className="movement-flow">
-                          <span>{activeStep.fromUser?.displayName || 'Origin'}</span>
+                          <span>{activeStep.fromUser?.displayName || label('mv_origin')}</span>
                           <span className="movement-flow-arrow">→</span>
-                          <span>{activeStep.toUser?.displayName || 'Recipient'}</span>
+                          <span>{activeStep.toUser?.displayName || label('mv_recipient')}</span>
                         </div>
                         <div className="movement-step-grid">
                           <div>
-                            <span>Sent</span>
-                            <strong>{fmtDate(activeStep.createdAt)}</strong>
+                            <span>{label('mv_sent')}</span>
+                            <strong>{fmtDate(activeStep.createdAt, label('pending'))}</strong>
                           </div>
                           <div>
-                            <span>Received</span>
-                            <strong>{fmtDate(activeStep.acknowledgedAt)}</strong>
+                            <span>{label('mv_received')}</span>
+                            <strong>{fmtDate(activeStep.acknowledgedAt, label('pending'))}</strong>
                           </div>
                           <div>
-                            <span>Due</span>
+                            <span>{label('directions_due')}</span>
                             <strong>
-                              {activeStep.dueDate ? fmtDate(activeStep.dueDate) : 'Pending'}
+                              {activeStep.dueDate
+                                ? fmtDate(activeStep.dueDate, label('pending'))
+                                : label('pending')}
                             </strong>
                           </div>
                           <div>
-                            <span>Completed</span>
-                            <strong>{fmtDate(activeStep.completedAt)}</strong>
+                            <span>{label('completed')}</span>
+                            <strong>{fmtDate(activeStep.completedAt, label('pending'))}</strong>
                           </div>
                         </div>
                         {activeStep.remarks && (
                           <p className="muted" style={{ marginTop: 10 }}>
-                            Remarks: {activeStep.remarks}
+                            {tf(lang, 'mv_remarksLine', { text: activeStep.remarks })}
                           </p>
                         )}
                       </div>
@@ -506,7 +664,7 @@ export default function MovementPage() {
                     onClick={() => setHistoryOpen((v) => !v)}
                   >
                     <span>
-                      Full activity history · {detail.journeyEvents?.length || 0} events
+                      {tf(lang, 'mv_historyToggle', { count: detail.journeyEvents?.length || 0 })}
                     </span>
                     <span>{historyOpen ? '▾' : '▸'}</span>
                   </button>
@@ -515,13 +673,13 @@ export default function MovementPage() {
                       <ul className="timeline">
                         {(detail.journeyEvents || []).map((ev) => (
                           <li key={ev.id}>
-                            <strong>{ev.kind}</strong>
-                            <div className="muted">{fmtDate(ev.createdAt)}</div>
-                            <div>{ev.summary}</div>
+                            <strong>{enumLabel(lang, ev.kind)}</strong>
+                            <div className="muted">{fmtDate(ev.createdAt, label('pending'))}</div>
+                            <div>{enumLabel(lang, ev.summary)}</div>
                           </li>
                         ))}
                         {!detail.journeyEvents?.length && (
-                          <li className="muted">No journey events yet.</li>
+                          <li className="muted">{label('mv_noJourney')}</li>
                         )}
                       </ul>
                     </div>
@@ -532,13 +690,13 @@ export default function MovementPage() {
                     className="movement-collapse"
                     onClick={() => setSourceOpen((v) => !v)}
                   >
-                    <span>Source summary</span>
+                    <span>{label('mv_sourceSummary')}</span>
                     <span>{sourceOpen ? '▾' : '▸'}</span>
                   </button>
                   {sourceOpen && (
                     <div className="panel" style={{ marginTop: 0, borderTopLeftRadius: 0, borderTopRightRadius: 0 }}>
                       <p style={{ whiteSpace: 'pre-wrap', margin: 0 }}>
-                        {detail.body || 'No source text.'}
+                        {detail.body || label('mv_noSource')}
                       </p>
                     </div>
                   )}

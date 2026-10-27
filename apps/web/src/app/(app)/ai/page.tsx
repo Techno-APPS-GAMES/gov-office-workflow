@@ -5,7 +5,7 @@ import { api } from '@/lib/api';
 import { useAuth } from '@/components/AuthProvider';
 import { useToast } from '@/components/Toast';
 import { PageHeader } from '@/components/PageHeader';
-import { pageTitle } from '@/lib/i18n';
+import { enumLabel, pageTitle } from '@/lib/i18n';
 
 type Status = {
   enabled: boolean;
@@ -18,12 +18,7 @@ type Status = {
 
 type Turn = { q: string; a: string; mode?: string; at: string };
 
-const PROMPTS = [
-  'Summarize this matter for the Speaker desk',
-  'What is the current status and who holds the file?',
-  'List routing history and outstanding actions',
-  'Draft talking points from notes and correspondence',
-];
+const PROMPT_KEYS = ['aix_prompt1', 'aix_prompt2', 'aix_prompt3', 'aix_prompt4'];
 
 export default function AiPage() {
   const { label, lang, user } = useAuth();
@@ -55,9 +50,9 @@ export default function AiPage() {
         { q, a: res.answer, mode: res.mode, at: new Date().toISOString() },
       ]);
       setQuestion('');
-      toast.success('Briefing ready');
+      toast.success(label('aix_briefingReady'));
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'AI unavailable');
+      toast.error(err instanceof Error ? err.message : label('aix_unavailable'));
     } finally {
       setBusy(false);
     }
@@ -67,39 +62,39 @@ export default function AiPage() {
     <>
       <PageHeader
         title={pageTitle(lang, 'ai', user?.role) || label('ai')}
-        subtitle="Grounded assistant for Speaker desk — answers only from authorized office records."
+        subtitle={label('aix_headerSub')}
       />
 
       <div className="ai-status-row">
         <div className="dash-kpi">
-          <div className="label">Mode</div>
+          <div className="label">{label('aix_mode')}</div>
           <div className="value" style={{ fontSize: 18 }}>
-            {status?.mode === 'remote' ? 'Remote model' : 'Local briefing'}
+            {status?.mode === 'remote' ? label('aix_remoteModel') : label('aix_localBriefing')}
           </div>
           <div className="hint">{status?.note}</div>
         </div>
         <div className="dash-kpi">
-          <div className="label">Grounding</div>
-          <div className="value" style={{ fontSize: 18 }}>Record-only</div>
-          <div className="hint">No invention of diary numbers or decisions</div>
+          <div className="label">{label('aix_grounding')}</div>
+          <div className="value" style={{ fontSize: 18 }}>{label('aix_recordOnly')}</div>
+          <div className="hint">{label('aix_groundingHint')}</div>
         </div>
         <div className="dash-kpi">
-          <div className="label">Model</div>
+          <div className="label">{label('aix_model')}</div>
           <div className="value" style={{ fontSize: 18 }}>{status?.model || '—'}</div>
           <div className="hint">
-            {status?.remoteConfigured ? 'AI_ENDPOINT configured' : 'Works without external AI'}
+            {status?.remoteConfigured ? label('aix_endpointOk') : label('aix_noExternal')}
           </div>
         </div>
       </div>
 
       <div className="ai-layout">
         <div className="panel">
-          <h2>Ask</h2>
+          <h2>{label('ai_ask')}</h2>
           <form className="grid-form" onSubmit={(e) => ask(e)}>
             <div className="field">
-              <label>Matter context</label>
+              <label>{label('aix_matterCtx')}</label>
               <select value={matterId} onChange={(e) => setMatterId(e.target.value)}>
-                <option value="">Workspace overview (no file)</option>
+                <option value="">{label('aix_overviewNoFile')}</option>
                 {matters.map((m) => (
                   <option key={m.id} value={m.id}>
                     {m.diaryNo} — {m.subject.slice(0, 60)}
@@ -109,45 +104,47 @@ export default function AiPage() {
               </select>
             </div>
             <div className="field">
-              <label>Question</label>
+              <label>{label('aix_question')}</label>
               <textarea
                 rows={4}
                 value={question}
                 onChange={(e) => setQuestion(e.target.value)}
-                placeholder="e.g. Summarize status and recommended next step"
+                placeholder={label('aix_questionPh')}
                 required
               />
             </div>
             <div className="prompt-chips">
-              {PROMPTS.map((p) => (
-                <button key={p} type="button" className="chip" onClick={() => ask(undefined, p)} disabled={busy}>
-                  {p}
+              {PROMPT_KEYS.map((k) => (
+                <button
+                  key={k}
+                  type="button"
+                  className="chip"
+                  onClick={() => ask(undefined, label(k))}
+                  disabled={busy}
+                >
+                  {label(k)}
                 </button>
               ))}
             </div>
             <button className="btn primary" type="submit" disabled={busy}>
-              {busy ? 'Preparing…' : 'Ask helper'}
+              {busy ? label('aix_preparing') : label('aix_askHelper')}
             </button>
           </form>
         </div>
 
         <div className="panel ai-thread">
-          <h2>Briefings</h2>
-          {!turns.length && (
-            <p className="muted">
-              Select a matter and ask for a summary, status, or talking points. Local mode always works from live records.
-            </p>
-          )}
+          <h2>{label('aix_briefings')}</h2>
+          {!turns.length && <p className="muted">{label('aix_briefingsEmpty')}</p>}
           <div className="ai-turns">
             {turns.map((t, i) => (
               <article key={`${t.at}-${i}`} className="ai-turn">
                 <div className="ai-q">
-                  <span className="eyebrow">You</span>
+                  <span className="eyebrow">{label('aix_you')}</span>
                   <p>{t.q}</p>
                 </div>
                 <div className="ai-a">
                   <span className="eyebrow">
-                    Helper {t.mode ? `· ${t.mode.replace(/_/g, ' ')}` : ''}
+                    {label('aix_helper')} {t.mode ? `· ${enumLabel(lang, t.mode)}` : ''}
                   </span>
                   <pre>{t.a}</pre>
                 </div>

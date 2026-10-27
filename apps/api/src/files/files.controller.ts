@@ -4,6 +4,7 @@ import {
   Get,
   Param,
   Post,
+  Query,
   Res,
   UploadedFile,
   UseInterceptors,
@@ -48,6 +49,19 @@ class DecisionDto {
   @IsOptional() @IsString() dueDate?: string;
 }
 
+class ReturnDto {
+  @IsString() @MinLength(10) remarks!: string;
+  @IsOptional()
+  @Transform(({ value }) => (value === '' || value == null ? undefined : value))
+  @IsUUID()
+  toUserId?: string;
+}
+
+class NoteDto {
+  @IsString() @MinLength(3) text!: string;
+  @IsOptional() @IsString() kind?: string;
+}
+
 @Controller('files')
 export class FilesController {
   constructor(private files: FilesService) {}
@@ -69,17 +83,28 @@ export class FilesController {
     @Param('attachmentId') attachmentId: string,
     @CurrentUser() user: { id: string; role: Role },
     @Res() res: Response,
+    @Query('reason') reason?: string,
   ) {
-    const file = await this.files.downloadAttachment(attachmentId, user);
+    const file = await this.files.downloadAttachment(attachmentId, user, reason);
     const safe = sanitizeFilename(file.fileName);
     res.setHeader('Content-Type', file.contentType);
     res.setHeader('Content-Disposition', `attachment; filename="${safe}"`);
     res.send(file.bytes);
   }
 
+  @Get('route-templates')
+  listTemplates() {
+    return this.files.listRouteTemplates();
+  }
+
   @Get(':id')
   get(@Param('id') id: string, @CurrentUser() user: { id: string; role: Role }) {
     return this.files.get(id, user);
+  }
+
+  @Get(':id/put-up-check')
+  putUpCheck(@Param('id') id: string, @CurrentUser() user: { id: string; role: Role }) {
+    return this.files.putUpCheck(id, user);
   }
 
   @Post()
@@ -115,18 +140,54 @@ export class FilesController {
     return this.files.route(id, user, dto);
   }
 
+  @Post(':id/route-template')
+  applyTemplate(
+    @Param('id') id: string,
+    @Body('templateId') templateId: string,
+    @CurrentUser() user: { id: string; role: Role },
+  ) {
+    return this.files.applyRouteTemplate(id, user, templateId);
+  }
+
+  @Post(':id/summary')
+  generateSummary(
+    @Param('id') id: string,
+    @Body('lang') lang: 'en' | 'ur',
+    @CurrentUser() user: { id: string; role: Role },
+  ) {
+    return this.files.generateSummary(id, user, lang === 'ur' ? 'ur' : 'en');
+  }
+
+  @Post(':id/summary/accept')
+  acceptSummary(
+    @Param('id') id: string,
+    @Body('text') text: string,
+    @CurrentUser() user: { id: string; role: Role },
+  ) {
+    return this.files.acceptSummary(id, user, text);
+  }
+
   @Post(':id/acknowledge')
-  acknowledge(@Param('id') id: string, @CurrentUser() user: { id: string }) {
+  acknowledge(@Param('id') id: string, @CurrentUser() user: { id: string; role: Role }) {
     return this.files.acknowledge(id, user);
+  }
+
+  @Post(':id/return')
+  returnMatter(
+    @Param('id') id: string,
+    @Body() dto: ReturnDto,
+    @CurrentUser() user: { id: string; role: Role },
+  ) {
+    return this.files.returnMatter(id, user, dto);
   }
 
   @Post(':id/complete-procedure')
   complete(
     @Param('id') id: string,
     @Body('outcome') outcome: string,
-    @CurrentUser() user: { id: string },
+    @CurrentUser() user: { id: string; role: Role },
   ) {
-    return this.files.completeProcedure(id, user, outcome || 'Completed');
+    return this.files.completeProcedure(id, user, outcome || 'PROCEDURE_COMPLETE');
   }
 
   @Post(':id/decide')
@@ -151,10 +212,10 @@ export class FilesController {
   @Post(':id/notes')
   note(
     @Param('id') id: string,
-    @Body('text') text: string,
+    @Body() body: NoteDto,
     @CurrentUser() user: { id: string; role: Role },
   ) {
-    return this.files.addNote(id, user, text);
+    return this.files.addNote(id, user, body.text, body.kind || 'NOTE');
   }
 
   @Post(':id/related')

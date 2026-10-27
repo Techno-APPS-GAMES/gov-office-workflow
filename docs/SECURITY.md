@@ -17,6 +17,11 @@ This platform is designed for sensitive government office workflows. Assume host
 ## Deployment
 Prefer on-prem Docker Compose behind TLS termination. Set `COOKIE_SECURE=true` and rotate all keys before go-live.
 
+## Demo-only flags (never in pilot)
+- `MFA_SKIP_LOGIN_TOTP=true` — skips TOTP at login after enrollment. **Ignored** when `PILOT_MODE=true` or `NODE_ENV=production`.
+- `DEMO_WEAK_PASSWORDS=true` — relaxes password policy to 6+ chars. Seed refuses this combination under pilot/production unless `ALLOW_WEAK_SEED=true`.
+- Use `deploy/.env.pilot.example` for Gate 0–aligned configuration.
+
 ## Verification
 1. Register two users in different roles
 2. Create a Confidential matter, unlock with file password, route, decide

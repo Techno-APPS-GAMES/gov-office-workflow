@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Classification, DirectionStatus, MeetingStatus, Role } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { canSeeAllMatters } from '../auth/access';
+import { canSeeAllMatters, workItemVisibilityWhere } from '../auth/access';
 
 export type SearchIntent = {
   kind: 'general' | 'directions' | 'meetings' | 'overdue' | 'people';
@@ -63,6 +63,28 @@ export class SearchService {
         meetings: [],
       };
     }
+    if (term.length < 3) {
+      return {
+        intent: parseSearchIntent(term),
+        matters: [],
+        people: [],
+        workItems: [],
+        directions: [],
+        meetings: [],
+        note: 'Enter at least 3 characters to search. Full-text search (FTS) is planned for a future release.',
+      };
+    }
+    if (term.length < 3) {
+      return {
+        intent: null,
+        note: 'Enter at least 3 characters',
+        matters: [],
+        people: [],
+        workItems: [],
+        directions: [],
+        meetings: [],
+      };
+    }
 
     const intent = parseSearchIntent(term);
     const kw = intent.keywords;
@@ -99,9 +121,7 @@ export class SearchService {
             ],
           };
 
-    const workScope = canSeeAllMatters(user.role)
-      ? {}
-      : { OR: [{ ownerId: user.id }, { createdById: user.id }] };
+    const workScope = workItemVisibilityWhere(user);
 
     const directionScope =
       user.role === Role.SPEAKER || user.role === Role.ADMIN
@@ -120,7 +140,16 @@ export class SearchService {
       OR: fields.map((f) => ({ [f]: { contains: kw, mode: 'insensitive' as const } })),
     });
 
-    const [matters, people, workItems, directions, meetings] = await Promise.all([
+    const matterSelect = {
+      id: true,
+      diaryNo: true,
+      subject: true,
+      status: true,
+      classification: true,
+    } as const;
+
+    const [mattersMeta, mattersBody, mattersOcr, people, workItems, directions, meetings] =
+      await Promise.all([
       intent.kind === 'people' || intent.kind === 'directions' || intent.kind === 'overdue'
         ? Promise.resolve([])
         : this.prisma.matter.findMany({
@@ -132,24 +161,37 @@ export class SearchService {
                     { diaryNo: { contains: kw, mode: 'insensitive' } },
                     { subject: { contains: kw, mode: 'insensitive' } },
                     { sender: { contains: kw, mode: 'insensitive' } },
-                    { body: { contains: kw, mode: 'insensitive' } },
-                    {
-                      attachments: {
-                        some: { extractedText: { contains: kw, mode: 'insensitive' } },
-                      },
-                    },
                   ],
                 },
               ],
             },
             take: 40,
-            select: {
-              id: true,
-              diaryNo: true,
-              subject: true,
-              status: true,
-              classification: true,
+            select: matterSelect,
+          }),
+      intent.kind === 'people' || intent.kind === 'directions' || intent.kind === 'overdue'
+        ? Promise.resolve([])
+        : this.prisma.matter.findMany({
+            where: {
+              AND: [matterScope, { body: { contains: kw, mode: 'insensitive' } }],
             },
+            take: 12,
+            select: matterSelect,
+          }),
+      intent.kind === 'people' || intent.kind === 'directions' || intent.kind === 'overdue'
+        ? Promise.resolve([])
+        : this.prisma.matter.findMany({
+            where: {
+              AND: [
+                matterScope,
+                {
+                  attachments: {
+                    some: { extractedText: { contains: kw, mode: 'insensitive' } },
+                  },
+                },
+              ],
+            },
+            take: 12,
+            select: matterSelect,
           }),
       intent.kind === 'directions' || intent.kind === 'overdue' || intent.kind === 'meetings'
         ? Promise.resolve([])
@@ -227,6 +269,20 @@ export class SearchService {
           }),
     ]);
 
+    const kwLower = kw.toLowerCase();
+    const matterMap = new Map<string, (typeof mattersMeta)[number]>();
+    for (const m of [...mattersMeta, ...mattersBody, ...mattersOcr]) {
+      matterMap.set(m.id, m);
+    }
+    const matters = [...matterMap.values()].sort((a, b) => {
+      const aExact = a.diaryNo.toLowerCase() === kwLower ? 0 : 1;
+      const bExact = b.diaryNo.toLowerCase() === kwLower ? 0 : 1;
+      if (aExact !== bExact) return aExact - bExact;
+      const aPrefix = a.diaryNo.toLowerCase().startsWith(kwLower) ? 0 : 1;
+      const bPrefix = b.diaryNo.toLowerCase().startsWith(kwLower) ? 0 : 1;
+      return aPrefix - bPrefix;
+    });
+
     // Always include overdue directions when intent is general and query mentions pending work
     let extraDirections = directions;
     if (intent.kind === 'general' && /\bpending\b|\bdue\b/.test(term.toLowerCase())) {
@@ -266,7 +322,7 @@ export class SearchService {
         intent.kind !== 'general'
           ? `Interpreted as ${intent.kind} search` +
             (intent.keywords !== term ? ` · keywords: “${intent.keywords}”` : '')
-          : 'Permission-aware keyword search across matters, directions, meetings, people and work records',
+          : 'Permission-aware keyword search (min 3 chars; ILIKE on indexed fields — PostgreSQL FTS planned)',
     };
   }
 }

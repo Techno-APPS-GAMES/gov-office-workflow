@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>UAT handoff — packs</title>
+<style>
+:root{--ink:#1a2332;--muted:#5c6b7a;--line:#d8dee6;--paper:#f7f5f1;--pine:#1e4d3a;--font:"Segoe UI",system-ui,sans-serif;--mono:Consolas,monospace}
+body{margin:0;font-family:var(--font);color:var(--ink);background:var(--paper);line-height:1.55}
+.wrap{max-width:900px;margin:0 auto;padding:28px 16px 80px}
+.hero{background:#fff;border:1px solid var(--line);border-radius:16px;padding:26px;margin-bottom:18px}
+h1{margin:0 0 8px}p{color:var(--muted)}code{font-family:var(--mono);background:#eef2f6;padding:.1em .35em;border-radius:4px}
+.grid{display:grid;gap:10px}.pack{display:block;background:#fff;border:1px solid var(--line);border-top:4px solid var(--pine);border-radius:12px;padding:16px 18px;text-decoration:none;color:inherit}
+.pack:hover{border-color:var(--pine)}.pack-tag{font-family:var(--mono);font-size:.82rem;color:var(--pine);font-weight:700}
+.pack strong{display:block;margin:4px 0;font-size:1.05rem}.pack span{display:block;color:var(--muted);font-size:.9rem}
+.pack .go{margin-top:8px;color:var(--pine);font-weight:700}.note{background:#e8f2ec;border-radius:10px;padding:12px 14px;margin-top:16px;font-size:.9rem}
+</style></head><body><div class="wrap">
+<header class="hero">
+<h1>UAT handoff packs</h1>
+<p>One HTML file per person. Prefixes <code>UAT-P01</code>…<code>UAT-P06</code> keep data separate on a shared preview. Steps use exact left-nav labels and button names from the app.</p>
+<div class="note"><strong>Before UAT:</strong> <code>npm run prepare:uat -w @gow/api</code><br/>
+Password <code>Tester@Office1</code> · Vault <code>VaultTest!01</code><br/>
+<a href="https://office-workflow-preview.walkwell.pk/login">https://office-workflow-preview.walkwell.pk/login</a></div>
+</header>
+<div class="grid"><a class="pack" href="./TESTER_HANDOFF_01.html" style="border-top-color:#1e4d3a">
+      <div class="pack-tag">UAT-P01 · full</div>
+      <strong>Pack 01</strong>
+      <span>Cultural evening — protocol advice</span>
+      <span class="go">Open →</span>
+    </a><a class="pack" href="./TESTER_HANDOFF_02.html" style="border-top-color:#1a4a6b">
+      <div class="pack-tag">UAT-P02 · full</div>
+      <strong>Pack 02</strong>
+      <span>Mid-year budget brief — finance coordination</span>
+      <span class="go">Open →</span>
+    </a><a class="pack" href="./TESTER_HANDOFF_03.html" style="border-top-color:#6b3a1a">
+      <div class="pack-tag">UAT-P03 · full</div>
+      <strong>Pack 03</strong>
+      <span>Standing Committee visit — logistics</span>
+      <span class="go">Open →</span>
+    </a><a class="pack" href="./TESTER_HANDOFF_04.html" style="border-top-color:#4a1a6b">
+      <div class="pack-tag">UAT-P04 · full</div>
+      <strong>Pack 04</strong>
+      <span>Media Day — press coordination</span>
+      <span class="go">Open →</span>
+    </a><a class="pack" href="./TESTER_HANDOFF_05.html" style="border-top-color:#1a6b5a">
+      <div class="pack-tag">UAT-P05 · full</div>
+      <strong>Pack 05</strong>
+      <span>National Day greetings — protocol cards</span>
+      <span class="go">Open →</span>
+    </a><a class="pack" href="./TESTER_HANDOFF_06.html" style="border-top-color:#334155">
+      <div class="pack-tag">UAT-P06 · short</div>
+      <strong>Pack 06</strong>
+      <span>Short smoke — core path only</span>
+      <span class="go">Open →</span>
+    </a></div>
+<div class="note">Regenerate: <code>node docs/generate-tester-handoffs.mjs</code></div>
+</div></body></html>

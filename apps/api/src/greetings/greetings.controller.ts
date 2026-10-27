@@ -1,16 +1,25 @@
-import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { PressStatus, Role } from '@prisma/client';
 import { GreetingsService } from './greetings.service';
 import { CurrentUser } from '../auth/current-user.decorator';
-import { Roles } from '../auth/roles.decorator';
 
 @Controller('greetings')
 export class GreetingsController {
   constructor(private greetings: GreetingsService) {}
 
   @Get()
-  list() {
-    return this.greetings.list();
+  list(@Query('status') status?: string) {
+    return this.greetings.list(status);
+  }
+
+  @Get('occasions')
+  occasions() {
+    return this.greetings.listOccasions();
+  }
+
+  @Get(':id')
+  get(@Param('id') id: string) {
+    return this.greetings.get(id);
   }
 
   @Post()
@@ -24,21 +33,54 @@ export class GreetingsController {
       titleUr?: string;
       messageUr?: string;
       style?: string;
+      channel?: string;
       recipientCount?: number;
       occasionKey?: string;
       occasionDate?: string;
+      matterId?: string;
+      sourcesNote?: string;
+      deliveryNote?: string;
+      aiAssisted?: boolean;
     },
   ) {
     return this.greetings.create(user.id, body);
   }
 
   @Patch(':id/status')
-  @Roles(Role.SPEAKER, Role.SECRETARY_GENERAL, Role.ADMIN)
   setStatus(
     @Param('id') id: string,
-    @Body('status') status: PressStatus,
-    @CurrentUser() user: { id: string },
+    @Body() body: { status: PressStatus | string; reason?: string; deliveryNote?: string },
+    @CurrentUser() user: { id: string; role: Role },
   ) {
-    return this.greetings.setStatus(id, user.id, status);
+    return this.greetings.setStatus(id, user, body.status, {
+      reason: body.reason,
+      deliveryNote: body.deliveryNote,
+    });
+  }
+
+  @Patch(':id')
+  update(
+    @Param('id') id: string,
+    @CurrentUser() user: { id: string; role: Role },
+    @Body()
+    body: {
+      occasion?: string;
+      recipient?: string;
+      message?: string;
+      titleUr?: string;
+      messageUr?: string;
+      style?: string;
+      channel?: string;
+      recipientCount?: number;
+      occasionKey?: string;
+      occasionDate?: string | null;
+      matterId?: string | null;
+      sourcesNote?: string;
+      deliveryNote?: string;
+      aiAssisted?: boolean;
+      markHumanReviewed?: boolean;
+    },
+  ) {
+    return this.greetings.update(id, user, body);
   }
 }

@@ -2,11 +2,12 @@
 
 import Link from 'next/link';
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
-import { ROLE_META, type Role } from '@gow/shared';
 import { api } from '@/lib/api';
 import { useAuth } from '@/components/AuthProvider';
 import { useToast } from '@/components/Toast';
 import { roleAvatar } from '@/lib/avatars';
+import { useLiveRefresh, notifyDataChanged } from '@/lib/live-refresh';
+import { enumLabel, roleTitle, tf } from '@/lib/i18n';
 
 type Person = { id?: string; displayName: string; role?: string };
 type MatterRef = { id: string; diaryNo: string; subject: string };
@@ -17,6 +18,8 @@ type Direction = {
   status: string;
   dueDate?: string | null;
   evidence?: string | null;
+  evidenceFileName?: string | null;
+  evidenceSizeBytes?: number | null;
   escalateNote?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -37,20 +40,11 @@ type Activity = {
 type Filter = 'all' | 'active' | 'evidence' | 'overdue' | 'closed';
 
 const PIPELINE = [
-  { key: 'issued', label: 'Issued' },
-  { key: 'progress', label: 'In progress' },
-  { key: 'evidence', label: 'Evidence submitted' },
-  { key: 'closed', label: 'Verified & closed' },
+  { key: 'issued', labelKey: 'dr_pipeIssued' },
+  { key: 'progress', labelKey: 'dr_pipeProgress' },
+  { key: 'evidence', labelKey: 'dr_pipeEvidence' },
+  { key: 'closed', labelKey: 'dr_pipeClosed' },
 ] as const;
-
-function prettyStatus(status: string) {
-  if (status === 'EVIDENCE_SUBMITTED') return 'Completion submitted';
-  if (status === 'CLOSED') return 'Closed';
-  return status
-    .replace(/_/g, ' ')
-    .toLowerCase()
-    .replace(/\b\w/g, (c) => c.toUpperCase());
-}
 
 function statusClass(status: string) {
   if (status === 'OVERDUE' || status === 'ESCALATED') return 'dir-overdue';
@@ -81,11 +75,6 @@ function shortRef(id: string) {
   return `D-${1000 + (n % 9000)}`;
 }
 
-function roleTitle(role?: string) {
-  if (!role) return '';
-  return ROLE_META[role as Role]?.title || role.replace(/_/g, ' ');
-}
-
 function fmtDate(iso?: string | null) {
   if (!iso) return '—';
   return new Date(iso).toLocaleDateString(undefined, {
@@ -96,8 +85,9 @@ function fmtDate(iso?: string | null) {
 }
 
 function OwnerChip({ owner }: { owner?: Person | null }) {
-  const name = owner?.displayName || 'Unassigned';
-  const title = roleTitle(owner?.role);
+  const { lang, label } = useAuth();
+  const name = owner?.displayName || label('unassigned');
+  const title = roleTitle(lang, owner?.role);
   const src = roleAvatar(owner?.role);
   return (
     <div className="dir-owner">
@@ -116,15 +106,73 @@ function OwnerChip({ owner }: { owner?: Person | null }) {
 }
 
 export default function DirectionsPage() {
-  const { user } = useAuth();
+  const { user, lang, label } = useAuth();
   const toast = useToast();
   const [items, setItems] = useState<Direction[]>([]);
   const [filter, setFilter] = useState<Filter>('all');
   const [evidence, setEvidence] = useState<Record<string, string>>({});
+  const [evidenceFiles, setEvidenceFiles] = useState<Record<string, File | null>>({});
   const [historyId, setHistoryId] = useState<string | null>(null);
   const [activity, setActivity] = useState<Activity[]>([]);
   const [busy, setBusy] = useState(false);
+  const [staff, setStaff] = useState<{ id: string; displayName: string }[]>([]);
+  const [extendDue, setExtendDue] = useState<Record<string, string>>({});
+  const [reassignTo, setReassignTo] = useState<Record<string, string>>({});
+  const [clearNote, setClearNote] = useState<Record<string, string>>({});
   const isSpeaker = user?.role === 'SPEAKER' || user?.role === 'ADMIN';
+
+  async function downloadEvidenceFile(directionId: string, fileName: string) {
+    try {
+      const t = localStorage.getItem('gow_access');
+      const res = await fetch(`/api/directions/${directionId}/evidence-file/download`, {
+        headers: t ? { Authorization: `Bearer ${t}` } : {},
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error((await res.text()) || label('dr_downloadFailed'));
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      link.click();
+      URL.revokeObjectURL(url);
+      toast.success(label('dr_toastDownload'));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : label('dr_downloadFailed'));
+    }
+  }
+
+  async function submitEvidence(directionId: string) {
+    const text = (evidence[directionId] || '').trim();
+    const file = evidenceFiles[directionId];
+    if (!text || !file) {
+      toast.error(label('dr_evidenceRequired'));
+      return;
+    }
+    setBusy(true);
+    try {
+      const fd = new FormData();
+      fd.append('evidence', text);
+      fd.append('file', file);
+      const t = localStorage.getItem('gow_access');
+      const res = await fetch(`/api/directions/${directionId}/evidence`, {
+        method: 'POST',
+        headers: t ? { Authorization: `Bearer ${t}` } : {},
+        body: fd,
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error((await res.text()) || label('dr_submitFailed'));
+      toast.success(label('dr_toastEvidence'));
+      setEvidence({ ...evidence, [directionId]: '' });
+      setEvidenceFiles({ ...evidenceFiles, [directionId]: null });
+      notifyDataChanged();
+      await load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : label('cm_failed'));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   const load = useCallback(async () => {
     setItems(await api<Direction[]>('/directions'));
@@ -133,6 +181,15 @@ export default function DirectionsPage() {
   useEffect(() => {
     load().catch(() => setItems([]));
   }, [load]);
+
+  useEffect(() => {
+    if (!isSpeaker) return;
+    api<{ id: string; displayName: string }[]>('/users')
+      .then(setStaff)
+      .catch(() => undefined);
+  }, [isSpeaker]);
+
+  useLiveRefresh(load, [load]);
 
   const counts = useMemo(() => {
     const overdue = items.filter((d) => d.status === 'OVERDUE').length;
@@ -168,7 +225,7 @@ export default function DirectionsPage() {
       toast.success(ok);
       await load();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed');
+      toast.error(err instanceof Error ? err.message : label('cm_failed'));
     } finally {
       setBusy(false);
     }
@@ -193,68 +250,65 @@ export default function DirectionsPage() {
       <div className="overview-hero">
         <div>
           <div className="eyebrow">
-            {user?.role === 'SPEAKER' ? "SPEAKER'S OFFICE" : 'OFFICE WORKFLOW'} · CONCEPT DEMO
+            {user?.role === 'SPEAKER' ? label('cm_speakerOffice') : label('cm_officeWorkflow')} ·{' '}
+            {label('cm_conceptDemo')}
           </div>
-          <h1>Directions tracker</h1>
-          <p className="muted">
-            Follow each instruction from issuance through named ownership, reminders, escalation
-            and verified evidence.
-          </p>
+          <h1>{label('dr_title')}</h1>
+          <p className="muted">{label('dr_heroSub')}</p>
         </div>
       </div>
 
       <div className="dir-kpi-row">
         <div className="dir-kpi">
           <div className="dir-kpi-value">{counts.total}</div>
-          <div className="dir-kpi-label">Total directions</div>
-          <div className="muted">Official mandates</div>
+          <div className="dir-kpi-label">{label('dr_kpiTotal')}</div>
+          <div className="muted">{label('dr_kpiTotalSub')}</div>
         </div>
         <div className="dir-kpi">
           <div className="dir-kpi-value">{counts.inProgress}</div>
-          <div className="dir-kpi-label">In progress</div>
-          <div className="muted">Active execution</div>
+          <div className="dir-kpi-label">{label('dr_pipeProgress')}</div>
+          <div className="muted">{label('dr_kpiProgressSub')}</div>
         </div>
         <div className="dir-kpi">
           <div className="dir-kpi-value">{counts.evidence}</div>
-          <div className="dir-kpi-label">Evidence submitted</div>
-          <div className="muted">Awaiting Speaker review</div>
+          <div className="dir-kpi-label">{label('dr_pipeEvidence')}</div>
+          <div className="muted">{label('dr_kpiEvidenceSub')}</div>
         </div>
         <div className="dir-kpi alert">
           <div className="dir-kpi-value">{counts.overdue}</div>
-          <div className="dir-kpi-label">Overdue</div>
-          <div className="muted">Attention needed</div>
+          <div className="dir-kpi-label">{enumLabel(lang, 'OVERDUE')}</div>
+          <div className="muted">{label('dr_kpiOverdueSub')}</div>
         </div>
         <div className="dir-kpi">
           <div className="dir-kpi-value">{counts.closed}</div>
-          <div className="dir-kpi-label">Verified & closed</div>
-          <div className="muted">Fully reached</div>
+          <div className="dir-kpi-label">{label('dr_pipeClosed')}</div>
+          <div className="muted">{label('dr_kpiClosedSub')}</div>
         </div>
       </div>
 
       {counts.overdue > 0 && (
         <div className="dir-overdue-banner">
-          {counts.overdue} overdue direction(s). Due dates are checked live. The Speaker can record
-          a reviewed escalation; no external message is sent in this demo.
+          {tf(lang, 'dr_overdueBanner', { count: counts.overdue })}
         </div>
       )}
 
       <div className="dir-filters">
         {(
           [
-            ['all', `All directions · ${counts.total}`],
-            ['active', `Active & in progress · ${counts.active}`],
-            ['evidence', `Evidence submitted · ${counts.evidence}`],
-            ['overdue', `Overdue · ${counts.overdue}`],
-            ['closed', `Verified & closed · ${counts.closed}`],
+            ['all', tf(lang, 'dr_fAll', { count: counts.total })],
+            ['active', tf(lang, 'dr_fActive', { count: counts.active })],
+            ['evidence', tf(lang, 'dr_fEvidence', { count: counts.evidence })],
+            ['overdue', tf(lang, 'dr_fOverdue', { count: counts.overdue })],
+            ['closed', tf(lang, 'dr_fClosed', { count: counts.closed })],
           ] as [Filter, string][]
-        ).map(([key, label]) => (
+        ).map(([key, text]) => (
           <button
             key={key}
             type="button"
             className={filter === key ? 'active' : ''}
             onClick={() => setFilter(key)}
           >
-            {label}
+            {text}
           </button>
         ))}
       </div>
@@ -267,10 +321,10 @@ export default function DirectionsPage() {
             <article key={d.id} className="dir-card">
               <div className="dir-card-top">
                 <span className="dir-ref">
-                  {shortRef(d.id)} · {d.matter ? 'FILE' : 'STANDALONE'}
+                  {shortRef(d.id)} · {d.matter ? label('dr_refFile') : label('dr_refStandalone')}
                 </span>
                 <span className={`dir-status ${statusClass(d.status)}`}>
-                  {prettyStatus(d.status)}
+                  {enumLabel(lang, d.status)}
                 </span>
               </div>
               <h3>{d.title}</h3>
@@ -282,14 +336,14 @@ export default function DirectionsPage() {
                     className={`dir-pipe-step ${i <= step ? 'done' : ''} ${i === step ? 'current' : ''}`}
                   >
                     <span className="dir-pipe-dot" />
-                    <span className="dir-pipe-label">{p.label}</span>
+                    <span className="dir-pipe-label">{label(p.labelKey)}</span>
                   </div>
                 ))}
               </div>
 
               {d.matter && (
                 <div className="dir-meta">
-                  <span>Source</span>
+                  <span>{label('dr_source')}</span>
                   <Link href={`/files/${d.matter.id}`}>
                     {d.matter.diaryNo} — {d.matter.subject}
                   </Link>
@@ -297,32 +351,49 @@ export default function DirectionsPage() {
               )}
 
               <div className="dir-meta">
-                <span>Responsible</span>
+                <span>{label('dr_responsible')}</span>
                 <OwnerChip owner={d.owner} />
               </div>
 
               <div className="dir-dates">
                 <div>
-                  <span>Due</span>
+                  <span>{label('directions_due')}</span>
                   <strong>{fmtDate(d.dueDate)}</strong>
                 </div>
                 <div>
-                  <span>Last update</span>
+                  <span>{label('dr_lastUpdate')}</span>
                   <strong>{fmtDate(d.updatedAt)}</strong>
                 </div>
               </div>
 
               {d.evidence && (
                 <div className="dir-evidence-box">
-                  <span>Completion evidence</span>
+                  <span>{label('dr_completionEvidence')}</span>
                   <p>{d.evidence}</p>
+                  {d.evidenceFileName && (
+                    <div className="row" style={{ marginTop: 8, gap: 8, flexWrap: 'wrap' }}>
+                      <span className="muted">
+                        {tf(lang, 'dr_attachment', { name: d.evidenceFileName })}
+                        {d.evidenceSizeBytes != null
+                          ? tf(lang, 'dr_bytes', { size: d.evidenceSizeBytes.toLocaleString() })
+                          : ''}
+                      </span>
+                      <button
+                        type="button"
+                        className="btn"
+                        onClick={() => downloadEvidenceFile(d.id, d.evidenceFileName!)}
+                      >
+                        {label('dr_downloadFile')}
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
 
               {d.escalateNote && d.status === 'ESCALATED' && (
                 <div className="dir-escalate-note">
-                  Escalated · {d.escalateNote}
-                  <div className="muted">Recorded {fmtDate(d.updatedAt)}</div>
+                  {tf(lang, 'dr_escalatedNote', { note: d.escalateNote })}
+                  <div className="muted">{tf(lang, 'dr_recorded', { date: fmtDate(d.updatedAt) })}</div>
                 </div>
               )}
 
@@ -332,9 +403,14 @@ export default function DirectionsPage() {
                     type="button"
                     className="btn"
                     disabled={busy}
-                    onClick={() => run(() => api(`/directions/${d.id}/start`, { method: 'POST' }), 'Started')}
+                    onClick={() =>
+                      run(
+                        () => api(`/directions/${d.id}/start`, { method: 'POST' }),
+                        label('dr_toastStarted'),
+                      )
+                    }
                   >
-                    Start work
+                    {label('directions_start')}
                   </button>
                 )}
 
@@ -346,24 +422,27 @@ export default function DirectionsPage() {
                       className="dir-evidence-form"
                       onSubmit={(e: FormEvent) => {
                         e.preventDefault();
-                        run(
-                          () =>
-                            api(`/directions/${d.id}/evidence`, {
-                              method: 'POST',
-                              json: { evidence: evidence[d.id] || '' },
-                            }),
-                          'Evidence submitted',
-                        );
+                        void submitEvidence(d.id);
                       }}
                     >
                       <input
-                        placeholder="Describe completion evidence"
+                        placeholder={label('dr_evidencePlaceholder')}
                         value={evidence[d.id] || ''}
                         onChange={(e) => setEvidence({ ...evidence, [d.id]: e.target.value })}
                         required
                       />
+                      <input
+                        type="file"
+                        required
+                        onChange={(e) =>
+                          setEvidenceFiles({
+                            ...evidenceFiles,
+                            [d.id]: e.target.files?.[0] || null,
+                          })
+                        }
+                      />
                       <button className="btn primary" type="submit" disabled={busy}>
-                        Submit evidence
+                        {label('directions_evidence')}
                       </button>
                     </form>
                   )}
@@ -381,11 +460,11 @@ export default function DirectionsPage() {
                               method: 'POST',
                               json: { approve: true },
                             }),
-                          'Evidence verified',
+                          label('dr_toastVerified'),
                         )
                       }
                     >
-                      Review evidence
+                      {label('dr_reviewEvidence')}
                     </button>
                     <button
                       type="button"
@@ -398,11 +477,11 @@ export default function DirectionsPage() {
                               method: 'POST',
                               json: { approve: false },
                             }),
-                          'Returned for more work',
+                          label('dr_toastReturned'),
                         )
                       }
                     >
-                      Return
+                      {label('dr_returnBtn')}
                     </button>
                   </>
                 )}
@@ -424,12 +503,111 @@ export default function DirectionsPage() {
                                   : 'Owner escalation for attention',
                               },
                             }),
-                          'Escalation recorded',
+                          label('dr_toastEscalated'),
                         )
                       }
                     >
-                      Escalate
+                      {label('directions_escalate')}
                     </button>
+                  )}
+
+                {isSpeaker && d.status === 'ESCALATED' && (
+                  <div className="dir-evidence-form">
+                    <input
+                      placeholder={label('dr_clearEscalationNote')}
+                      value={clearNote[d.id] || ''}
+                      onChange={(e) =>
+                        setClearNote({ ...clearNote, [d.id]: e.target.value })
+                      }
+                      minLength={5}
+                      required
+                    />
+                    <button
+                      type="button"
+                      className="btn primary"
+                      disabled={busy || (clearNote[d.id] || '').trim().length < 5}
+                      onClick={() =>
+                        run(
+                          () =>
+                            api(`/directions/${d.id}/clear-escalation`, {
+                              method: 'POST',
+                              json: { note: (clearNote[d.id] || '').trim() },
+                            }),
+                          label('dr_toastCleared'),
+                        )
+                      }
+                    >
+                      {label('dr_clearEscalation')}
+                    </button>
+                  </div>
+                )}
+
+                {(isSpeaker ||
+                  (isOwner && (d.status === 'RETURNED' || d.status === 'OVERDUE'))) &&
+                  ['RETURNED', 'ESCALATED', 'OVERDUE', 'IN_PROGRESS'].includes(d.status) && (
+                    <div className="dir-evidence-form">
+                      <input
+                        type="date"
+                        value={extendDue[d.id] || ''}
+                        min={new Date().toISOString().slice(0, 10)}
+                        onChange={(e) =>
+                          setExtendDue({ ...extendDue, [d.id]: e.target.value })
+                        }
+                      />
+                      <button
+                        type="button"
+                        className="btn"
+                        disabled={busy || !extendDue[d.id]}
+                        onClick={() =>
+                          run(
+                            () =>
+                              api(`/directions/${d.id}/extend-due`, {
+                                method: 'POST',
+                                json: { dueDate: extendDue[d.id] },
+                              }),
+                            label('dr_toastDueExtended'),
+                          )
+                        }
+                      >
+                        {label('dr_extendDue')}
+                      </button>
+                    </div>
+                  )}
+
+                {isSpeaker &&
+                  ['RETURNED', 'ESCALATED', 'OVERDUE', 'IN_PROGRESS'].includes(d.status) && (
+                    <div className="dir-evidence-form">
+                      <select
+                        value={reassignTo[d.id] || ''}
+                        onChange={(e) =>
+                          setReassignTo({ ...reassignTo, [d.id]: e.target.value })
+                        }
+                      >
+                        <option value="">{label('fd_selectOfficer')}</option>
+                        {staff.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.displayName}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        className="btn"
+                        disabled={busy || !reassignTo[d.id]}
+                        onClick={() =>
+                          run(
+                            () =>
+                              api(`/directions/${d.id}/reassign`, {
+                                method: 'POST',
+                                json: { ownerId: reassignTo[d.id] },
+                              }),
+                            label('dr_toastReassigned'),
+                          )
+                        }
+                      >
+                        {label('dr_reassign')}
+                      </button>
+                    </div>
                   )}
               </div>
 
@@ -438,7 +616,7 @@ export default function DirectionsPage() {
                 className="dir-history-toggle"
                 onClick={() => toggleHistory(d.id)}
               >
-                Activity history ·{' '}
+                {label('dr_activityHistory')}{' '}
                 {historyId === d.id ? activity.length : '…'}
                 <span>{historyId === d.id ? '▾' : '▸'}</span>
               </button>
@@ -446,14 +624,14 @@ export default function DirectionsPage() {
                 <ul className="dir-history">
                   {activity.map((a) => (
                     <li key={a.id}>
-                      <strong>{a.action.replace(/_/g, ' ')}</strong>
+                      <strong>{enumLabel(lang, a.action)}</strong>
                       <div className="muted">
-                        {a.actor?.displayName || 'System'} · {fmtDate(a.createdAt)}
+                        {a.actor?.displayName || label('dr_system')} · {fmtDate(a.createdAt)}
                       </div>
                       <div>{a.summary}</div>
                     </li>
                   ))}
-                  {!activity.length && <li className="muted">No activity recorded yet.</li>}
+                  {!activity.length && <li className="muted">{label('dr_noActivity')}</li>}
                 </ul>
               )}
             </article>
@@ -461,7 +639,7 @@ export default function DirectionsPage() {
         })}
         {!filtered.length && (
           <div className="panel" style={{ gridColumn: '1 / -1' }}>
-            <p className="muted">No directions in this view.</p>
+            <p className="muted">{label('dr_emptyView')}</p>
           </div>
         )}
       </div>

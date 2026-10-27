@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "MatterNote" ADD COLUMN "kind" TEXT NOT NULL DEFAULT 'NOTE';

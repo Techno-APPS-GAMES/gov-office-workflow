@@ -1,11 +1,12 @@
 'use client';
 
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
 import { useAuth } from '@/components/AuthProvider';
 import { useToast } from '@/components/Toast';
-import { pageTitle } from '@/lib/i18n';
+import { enumLabel, pageTitle, t, tf } from '@/lib/i18n';
+import { useLiveRefresh } from '@/lib/live-refresh';
 
 type Dash = {
   kpis: {
@@ -62,9 +63,11 @@ const DIR_COLORS = ['#215b50', '#3b82f6', '#7c6bc4', '#bd9a57', '#a84e40'];
 function Donut({
   slices,
   colors,
+  totalLabel,
 }: {
   slices: { label: string; pct: number; count: number }[];
   colors: string[];
+  totalLabel: string;
 }) {
   const r = 42;
   const c = 2 * Math.PI * r;
@@ -97,7 +100,7 @@ function Donut({
           {total}
         </text>
         <text x="60" y="72" textAnchor="middle" className="donut-center-label">
-          total
+          {totalLabel}
         </text>
       </svg>
       <ul className="donut-legend">
@@ -115,16 +118,12 @@ function Donut({
   );
 }
 
-function statusLabel(s: string) {
-  return s.replace(/_/g, ' ');
-}
-
 function initial(name: string) {
   return (name || '?').trim().charAt(0).toUpperCase();
 }
 
 export default function OverviewPage() {
-  const { user, lang } = useAuth();
+  const { user, lang, label } = useAuth();
   const toast = useToast();
   const [dash, setDash] = useState<Dash | null>(null);
   const [error, setError] = useState('');
@@ -132,34 +131,35 @@ export default function OverviewPage() {
   const [filePassword, setFilePassword] = useState('');
   const [unlockBusy, setUnlockBusy] = useState(false);
 
-  async function load() {
-    setDash(await api<Dash>('/health/dashboard'));
-  }
+  const load = useCallback(async () => {
+    try {
+      setDash(await api<Dash>('/health/dashboard'));
+      setError('');
+    } catch (e) {
+      setError(String((e as Error).message || e));
+    }
+  }, []);
 
   useEffect(() => {
-    load().catch((e) => setError(String(e.message || e)));
-  }, []);
+    void load();
+  }, [load]);
+
+  useLiveRefresh(load, [load]);
 
   const upcomingLine = useMemo(() => {
     if (!dash) return '';
     const u = dash.upcoming;
+    const plural = (base: string, n: number) =>
+      tf(lang, `${base}_${n === 1 ? '1' : 'n'}`, { n });
     const parts = [
-      u.schedule ? `${u.schedule} engagement${u.schedule === 1 ? '' : 's'} ahead` : null,
-      u.directionRemindersDue
-        ? `${u.directionRemindersDue} direction reminder${u.directionRemindersDue === 1 ? '' : 's'} due`
-        : null,
-      u.meetingsPending
-        ? `${u.meetingsPending} meeting request${u.meetingsPending === 1 ? '' : 's'}`
-        : null,
-      u.workAwaiting
-        ? `${u.workAwaiting} work record${u.workAwaiting === 1 ? '' : 's'} awaiting approval`
-        : null,
-      u.overdueDirections
-        ? `${u.overdueDirections} overdue direction${u.overdueDirections === 1 ? '' : 's'}`
-        : null,
+      u.schedule ? plural('ov_up_engagement', u.schedule) : null,
+      u.directionRemindersDue ? plural('ov_up_reminder', u.directionRemindersDue) : null,
+      u.meetingsPending ? plural('ov_up_meeting', u.meetingsPending) : null,
+      u.workAwaiting ? plural('ov_up_work', u.workAwaiting) : null,
+      u.overdueDirections ? plural('ov_up_overdue', u.overdueDirections) : null,
     ].filter(Boolean);
-    return parts.length ? parts.join(' · ') : 'No urgent reminders right now.';
-  }, [dash]);
+    return parts.length ? parts.join(' · ') : label('ov_noReminders');
+  }, [dash, lang, label]);
 
   async function unlock(e: FormEvent, matterId: string) {
     e.preventDefault();
@@ -169,96 +169,112 @@ export default function OverviewPage() {
         method: 'POST',
         json: { password: filePassword },
       });
-      toast.success('Vault unlocked');
+      toast.success(label('files_unlocked'));
       setUnlockId(null);
       setFilePassword('');
       await load();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Unlock failed');
+      toast.error(err instanceof Error ? err.message : label('cm_unlockFailed'));
     } finally {
       setUnlockBusy(false);
     }
   }
 
-  if (error) return <div className="panel error">{error}</div>;
-  if (!dash) return <p className="muted">Loading office overview…</p>;
+  if (error && !dash) {
+    return (
+      <div className="panel error">
+        <p>{error}</p>
+        <button type="button" className="btn" onClick={() => void load()}>
+          Retry
+        </button>
+      </div>
+    );
+  }
+  if (!dash) return <p className="muted">{label('ov_loading')}</p>;
 
   const k = dash.kpis;
+  const classSlices = dash.byClassification.map((s) => ({ ...s, label: enumLabel(lang, s.key) }));
+  const dirSlices = dash.byDirectionStatus.map((s) => {
+    const key = `ov_dir_${s.key}`;
+    const tr = t(lang, key);
+    return { ...s, label: tr === key ? s.label : tr };
+  });
 
   return (
     <>
       <div className="overview-hero">
         <div>
           <div className="eyebrow">
-            {user?.role === 'SPEAKER' ? "SPEAKER'S OFFICE" : 'OFFICE WORKFLOW'} · LIVE WORKSPACE
+            {user?.role === 'SPEAKER' ? label('cm_speakerOffice') : label('cm_officeWorkflow')} ·{' '}
+            {label('cm_liveWorkspace')}
           </div>
-          <h1>{pageTitle(lang, 'overview', user?.role) || 'Office overview'}</h1>
-          <p className="muted">Files, directions and engagements that need attention.</p>
+          <h1>{pageTitle(lang, 'overview', user?.role) || label('overview')}</h1>
+          <p className="muted">{label('ov_heroSub')}</p>
         </div>
         <Link className="btn primary" href="/files?register=1">
-          + Register a matter
+          {label('ov_registerMatter')}
         </Link>
       </div>
 
       <div className="callout-banner movement-callout">
         <div>
-          <strong>Start with file movement</strong>
-          <p>See the current holder, next action and full journey for each matter.</p>
+          <strong>{label('ov_startMovement')}</strong>
+          <p>{label('ov_startMovementBody')}</p>
         </div>
         <Link className="btn" href="/movement">
-          Open movement →
+          {label('ov_openMovement')}
         </Link>
       </div>
 
       <div className="dash-kpis accent-kpis">
         <div className="dash-kpi accent-blue">
-          <div className="label">Total official matters</div>
+          <div className="label">{label('ov_kpiTotalMatters')}</div>
           <div className="value">{k.mattersTotal}</div>
           <div className="hint">
-            {k.mattersOpen} active · {k.mattersClosed} closed
+            {tf(lang, 'ov_hintActiveClosed', { open: k.mattersOpen, closed: k.mattersClosed })}
           </div>
         </div>
         <div className="dash-kpi accent-gold">
-          <div className="label">Directions tracker</div>
+          <div className="label">{label('ov_kpiDirections')}</div>
           <div className="value">{k.directionsOpen}</div>
-          <div className="hint">
-            {k.evidenceSubmitted} evidence submitted
-          </div>
+          <div className="hint">{tf(lang, 'ov_hintEvidence', { n: k.evidenceSubmitted })}</div>
         </div>
         <div className="dash-kpi accent-red">
-          <div className="label">Overdue & attention</div>
+          <div className="label">{label('ov_kpiOverdue')}</div>
           <div className="value">{k.overdueAttention}</div>
-          <div className="hint">{k.highPriority} high priority</div>
+          <div className="hint">{tf(lang, 'ov_hintHigh', { n: k.highPriority })}</div>
         </div>
         <div className="dash-kpi accent-sky">
-          <div className="label">Confirmed meetings</div>
+          <div className="label">{label('ov_kpiMeetings')}</div>
           <div className="value">{k.meetingsConfirmed}</div>
-          <div className="hint">{k.meetingsPending} requests pending</div>
+          <div className="hint">{tf(lang, 'ov_hintRequestsPending', { n: k.meetingsPending })}</div>
         </div>
         <div className="dash-kpi accent-amber">
-          <div className="label">Work records & briefs</div>
+          <div className="label">{label('ov_kpiWork')}</div>
           <div className="value">{k.workRecords}</div>
-          <div className="hint">{k.workAwaiting} awaiting approval</div>
+          <div className="hint">{tf(lang, 'ov_hintAwaitingApproval', { n: k.workAwaiting })}</div>
         </div>
       </div>
 
       <div className="dash-charts">
         <div className="panel">
-          <h3>Matters by classification</h3>
-          <Donut slices={dash.byClassification} colors={CLASS_COLORS} />
+          <h3>{label('ov_chartClass')}</h3>
+          <Donut slices={classSlices} colors={CLASS_COLORS} totalLabel={label('ov_donutTotal')} />
         </div>
         <div className="panel">
-          <h3>Directions compliance</h3>
+          <h3>{label('ov_chartDirections')}</h3>
           {dash.byDirectionStatus.some((s) => s.count > 0) ? (
-            <Donut slices={dash.byDirectionStatus} colors={DIR_COLORS} />
+            <Donut slices={dirSlices} colors={DIR_COLORS} totalLabel={label('ov_donutTotal')} />
           ) : (
-            <p className="muted">No directions yet</p>
+            <p className="muted">{label('ov_noDirectionsYet')}</p>
           )}
         </div>
         <div className="panel">
-          <h3>Subject area breakdown</h3>
+          <h3>{label('ov_chartSubject')}</h3>
           <ul className="bar-list">
-            {dash.bySubjectArea.length === 0 && <li className="muted">No subject data yet</li>}
+            {dash.bySubjectArea.length === 0 && (
+              <li className="muted">{label('ov_noSubjectData')}</li>
+            )}
             {dash.bySubjectArea.map((s) => (
               <li key={s.label}>
                 <div className="bar-meta">
@@ -278,20 +294,20 @@ export default function OverviewPage() {
 
       <div className="callout-banner upcoming-banner">
         <div>
-          <strong>Upcoming</strong>
+          <strong>{label('overview_upcoming')}</strong>
           <p>{upcomingLine}</p>
         </div>
         <Link className="btn" href="/schedule">
-          Open schedule →
+          {label('ov_openSchedule')}
         </Link>
       </div>
 
       <div className="dash-split">
         <div className="panel" style={{ padding: 0 }}>
           <div className="panel-head" style={{ padding: '14px 16px 0' }}>
-            <h3 style={{ margin: 0 }}>Open files</h3>
+            <h3 style={{ margin: 0 }}>{label('overview_openFiles')}</h3>
             <Link href="/files" className="btn tiny-link">
-              View all →
+              {label('cm_viewAllArrow')}
             </Link>
           </div>
           <ul className="open-file-list">
@@ -306,7 +322,9 @@ export default function OverviewPage() {
                       {locked ? (
                         <>
                           <strong>{f.diaryNo}</strong>
-                          <div className="muted">Holder: {f.holder || f.createdBy}</div>
+                          <div className="muted">
+                            {label('holder')}: {f.holder || f.createdBy}
+                          </div>
                         </>
                       ) : (
                         <>
@@ -319,16 +337,20 @@ export default function OverviewPage() {
                       )}
                       <div className="row" style={{ gap: 6, marginTop: 6 }}>
                         {!locked && (
-                          <span className={`badge ${f.status}`}>{statusLabel(f.status)}</span>
+                          <span className={`badge ${f.status}`}>{enumLabel(lang, f.status)}</span>
                         )}
-                        {confidential && <span className="badge CONFIDENTIAL">Confidential</span>}
-                        {f.priority === 'URGENT' && <span className="badge URGENT">Urgent</span>}
+                        {confidential && (
+                          <span className="badge CONFIDENTIAL">{enumLabel(lang, 'CONFIDENTIAL')}</span>
+                        )}
+                        {f.priority === 'URGENT' && (
+                          <span className="badge URGENT">{enumLabel(lang, 'URGENT')}</span>
+                        )}
                       </div>
                       {unlockId === f.id && (
                         <form className="unlock-inline" onSubmit={(e) => unlock(e, f.id)}>
                           <input
                             type="password"
-                            placeholder="File password"
+                            placeholder={label('cm_filePassword')}
                             value={filePassword}
                             onChange={(e) => setFilePassword(e.target.value)}
                             minLength={12}
@@ -336,7 +358,7 @@ export default function OverviewPage() {
                             autoFocus
                           />
                           <button className="btn primary" type="submit" disabled={unlockBusy}>
-                            Unlock
+                            {label('files_unlock')}
                           </button>
                           <button
                             type="button"
@@ -346,7 +368,7 @@ export default function OverviewPage() {
                               setFilePassword('');
                             }}
                           >
-                            Cancel
+                            {label('cancel')}
                           </button>
                         </form>
                       )}
@@ -362,11 +384,11 @@ export default function OverviewPage() {
                           setFilePassword('');
                         }}
                       >
-                        🔑 Enter password
+                        {label('cm_enterPassword')}
                       </button>
                     ) : (
                       <Link className="btn primary" href={`/files/${f.id}`}>
-                        Open
+                        {label('open')}
                       </Link>
                     )}
                   </div>
@@ -375,7 +397,7 @@ export default function OverviewPage() {
             })}
             {!dash.openFiles.length && (
               <li className="muted" style={{ padding: 16 }}>
-                No open files — register the first matter.
+                {label('ov_noOpenFilesRegister')}
               </li>
             )}
           </ul>
@@ -383,9 +405,9 @@ export default function OverviewPage() {
 
         <div className="panel" style={{ padding: 0 }}>
           <div className="panel-head" style={{ padding: '14px 16px 0' }}>
-            <h3 style={{ margin: 0 }}>Directions to follow up</h3>
+            <h3 style={{ margin: 0 }}>{label('ov_directionsFollow')}</h3>
             <Link href="/directions" className="btn tiny-link">
-              Open tracker →
+              {label('ov_openTracker')}
             </Link>
           </div>
           <ul className="open-file-list">
@@ -396,20 +418,22 @@ export default function OverviewPage() {
                   <div>
                     <strong>{d.title}</strong>
                     <div className="muted">
-                      {d.matter?.diaryNo || 'Direction'}
-                      {d.dueDate ? ` · Due ${new Date(d.dueDate).toLocaleDateString()}` : ''}
+                      {d.matter?.diaryNo || label('registry_direction')}
+                      {d.dueDate
+                        ? ` · ${tf(lang, 'ov_dueOn', { date: new Date(d.dueDate).toLocaleDateString() })}`
+                        : ''}
                       {` · ${d.owner}`}
                     </div>
                   </div>
                 </div>
                 <div className="open-file-actions">
-                  <span className={`badge ${d.status}`}>{statusLabel(d.status)}</span>
+                  <span className={`badge ${d.status}`}>{enumLabel(lang, d.status)}</span>
                 </div>
               </li>
             ))}
             {!dash.directions.length && (
               <li className="muted" style={{ padding: 16 }}>
-                No open directions.
+                {label('overview_noDirections')}
               </li>
             )}
           </ul>

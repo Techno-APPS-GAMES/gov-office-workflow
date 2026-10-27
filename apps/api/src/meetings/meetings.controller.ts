@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Param, Post } from '@nestjs/common';
 import { Role } from '@prisma/client';
 import { MeetingsService } from './meetings.service';
 import { CurrentUser } from '../auth/current-user.decorator';
@@ -40,7 +40,10 @@ export class MeetingsController {
     @Body('approve') approve: boolean,
     @CurrentUser() user: { id: string },
   ) {
-    return this.meetings.decide(id, user.id, approve !== false);
+    if (typeof approve !== 'boolean') {
+      throw new BadRequestException('approve must be true or false');
+    }
+    return this.meetings.decide(id, user.id, approve);
   }
 
   @Post(':id/complete')
@@ -73,11 +76,12 @@ export class MeetingsController {
   @Post(':id/actions/:actionId/promote')
   @Roles(Role.SPEAKER, Role.SECRETARY_GENERAL, Role.SPECIAL_SECRETARY, Role.ADMIN)
   promoteAction(
+    @Param('id') meetingId: string,
     @Param('actionId') actionId: string,
     @Body() body: { ownerId?: string; dueDate?: string },
     @CurrentUser() user: { id: string; role: Role },
   ) {
-    return this.meetings.promoteActionToDirection(actionId, user, body);
+    return this.meetings.promoteActionToDirection(actionId, user, body, meetingId);
   }
 
   @Post(':id/archive')

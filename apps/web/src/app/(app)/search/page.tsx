@@ -1,9 +1,11 @@
 'use client';
 
 import Link from 'next/link';
-import { FormEvent, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { useAuth } from '@/components/AuthProvider';
+import { useToast } from '@/components/Toast';
+import { enumLabel, roleTitle } from '@/lib/i18n';
 
 type SearchResult = {
   intent?: { kind: string; keywords: string } | null;
@@ -29,53 +31,78 @@ type SearchResult = {
 };
 
 export default function SearchPage() {
-  const { label } = useAuth();
+  const { lang, label } = useAuth();
+  const toast = useToast();
   const [q, setQ] = useState('');
   const [result, setResult] = useState<SearchResult | null>(null);
   const [busy, setBusy] = useState(false);
+  const [searchError, setSearchError] = useState('');
+
+  const runSearch = useCallback(
+    async (query: string) => {
+      const term = query.trim();
+      if (!term) {
+        setResult(null);
+        setSearchError('');
+        return;
+      }
+      setBusy(true);
+      setSearchError('');
+      try {
+        setResult(await api<SearchResult>(`/search?q=${encodeURIComponent(term)}`));
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : label('cm_failed');
+        setSearchError(msg);
+        toast.error(msg);
+      } finally {
+        setBusy(false);
+      }
+    },
+    [label, toast],
+  );
+
+  useEffect(() => {
+    const handle = window.setTimeout(() => {
+      void runSearch(q);
+    }, 300);
+    return () => window.clearTimeout(handle);
+  }, [q, runSearch]);
 
   async function run(e: FormEvent) {
     e.preventDefault();
-    setBusy(true);
-    try {
-      setResult(await api<SearchResult>(`/search?q=${encodeURIComponent(q)}`));
-    } finally {
-      setBusy(false);
-    }
+    await runSearch(q);
   }
 
   return (
     <>
       <h1>{label('search')}</h1>
-      <p className="muted">
-        Permission-aware retrieval. Try natural prompts such as “overdue directions”, “meetings about
-        protocol”, or a diary number.
-      </p>
+      <p className="muted">{label('sr_help')}</p>
       <div className="panel">
         <form className="row" onSubmit={run}>
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Diary, subject, overdue directions, meetings…"
+            placeholder={label('sr_placeholderFull')}
             style={{ flex: 1 }}
           />
           <button type="submit" disabled={busy}>
-            {busy ? 'Searching…' : 'Search'}
+            {busy ? label('sr_searching') : label('searchAction')}
           </button>
         </form>
+        {searchError ? <p className="error" style={{ marginTop: 10 }}>{searchError}</p> : null}
         {result?.note ? <p className="muted" style={{ marginTop: 10 }}>{result.note}</p> : null}
       </div>
       {result && (
         <>
           {(result.directions?.length || 0) > 0 ? (
             <div className="panel">
-              <h2>Directions</h2>
+              <h2>{label('search_directions')}</h2>
               <ul>
                 {result.directions!.map((d) => (
                   <li key={d.id}>
                     <Link href="/directions">{d.title}</Link>
                     {' — '}
-                    {d.status.replace(/_/g, ' ')}
+                    {enumLabel(lang, d.status)}
                     {d.matter?.diaryNo ? ` · ${d.matter.diaryNo}` : ''}
                     {d.owner?.displayName ? ` · ${d.owner.displayName}` : ''}
                   </li>
@@ -85,13 +112,13 @@ export default function SearchPage() {
           ) : null}
           {(result.meetings?.length || 0) > 0 ? (
             <div className="panel">
-              <h2>Meetings</h2>
+              <h2>{label('search_meetings')}</h2>
               <ul>
                 {result.meetings!.map((m) => (
                   <li key={m.id}>
                     <Link href="/meetings">{m.title}</Link>
                     {' — '}
-                    {m.status.replace(/_/g, ' ')}
+                    {enumLabel(lang, m.status)}
                     {m.location ? ` · ${m.location}` : ''}
                   </li>
                 ))}
@@ -99,9 +126,9 @@ export default function SearchPage() {
             </div>
           ) : null}
           <div className="panel">
-            <h2>Matters</h2>
+            <h2>{label('search_matters')}</h2>
             {(result.matters?.length || 0) === 0 ? (
-              <p className="muted">No matters matched.</p>
+              <p className="muted">{label('sr_noMatters')}</p>
             ) : (
               <ul>
                 {result.matters!.map((m) => (
@@ -113,28 +140,28 @@ export default function SearchPage() {
             )}
           </div>
           <div className="panel">
-            <h2>People</h2>
+            <h2>{label('sr_people')}</h2>
             {(result.people?.length || 0) === 0 ? (
-              <p className="muted">No people matched.</p>
+              <p className="muted">{label('sr_noPeople')}</p>
             ) : (
               <ul>
                 {result.people!.map((p) => (
                   <li key={p.id}>
-                    {p.displayName} ({p.role})
+                    {p.displayName} ({roleTitle(lang, p.role)})
                   </li>
                 ))}
               </ul>
             )}
           </div>
           <div className="panel">
-            <h2>Work records</h2>
+            <h2>{label('sr_workRecords')}</h2>
             {(result.workItems?.length || 0) === 0 ? (
-              <p className="muted">No work records matched.</p>
+              <p className="muted">{label('sr_noWork')}</p>
             ) : (
               <ul>
                 {result.workItems!.map((w) => (
                   <li key={w.id}>
-                    {w.title} — {w.status}
+                    {w.title} — {enumLabel(lang, w.status)}
                   </li>
                 ))}
               </ul>

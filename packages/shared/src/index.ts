@@ -68,34 +68,35 @@ export const decisionSchema = z.object({
 /** Nav order aligned to reference product IA (original implementation). */
 export const ROLE_NAV: Record<Role, string[]> = {
   SPEAKER: [
-    'overview', 'inbox', 'ai', 'messages', 'files', 'vault', 'movement', 'directions',
+    'overview', 'inbox', 'ai', 'messages', 'files', 'registry', 'vault', 'movement', 'directions',
     'calls', 'remote', 'meetings', 'schedule', 'speeches', 'press', 'greetings',
     'search', 'extensions', 'people', 'audit',
   ],
   SECRETARY_GENERAL: [
-    'overview', 'inbox', 'ai', 'messages', 'vault', 'movement', 'directions', 'calls',
-    'remote', 'meetings', 'schedule', 'speeches', 'press', 'greetings', 'search',
+    'overview', 'inbox', 'ai', 'messages', 'files', 'registry', 'vault', 'movement', 'directions',
+    'calls', 'remote', 'meetings', 'schedule', 'speeches', 'press', 'greetings', 'search',
     'extensions', 'people',
   ],
   SPECIAL_SECRETARY: [
-    'overview', 'inbox', 'ai', 'messages', 'vault', 'movement', 'directions', 'calls',
-    'remote', 'meetings', 'schedule', 'speeches', 'press', 'greetings', 'search',
+    'overview', 'inbox', 'ai', 'messages', 'files', 'registry', 'vault', 'movement', 'directions',
+    'calls', 'remote', 'meetings', 'schedule', 'speeches', 'press', 'greetings', 'search',
     'extensions', 'people',
   ],
   DG_IT: ['overview', 'audit'],
   ADMIN: [
-    'overview', 'inbox', 'ai', 'messages', 'files', 'vault', 'movement', 'directions',
+    'overview', 'inbox', 'ai', 'messages', 'files', 'registry', 'vault', 'movement', 'directions',
     'calls', 'remote', 'meetings', 'schedule', 'speeches', 'press', 'greetings',
     'search', 'extensions', 'people', 'audit',
   ],
 };
 
+/** Group id is an i18n key (nav.group.* / myDesk, …); labels come from the web app dictionary. */
 export const NAV_GROUPS: [string, string[]][] = [
-  ['My desk', ['overview', 'inbox', 'ai', 'messages']],
-  ['Files & decisions', ['files', 'vault', 'movement', 'directions', 'calls', 'remote']],
-  ['Calendar & media', ['meetings', 'schedule', 'speeches', 'press', 'greetings']],
-  ['Research & records', ['search', 'extensions', 'people']],
-  ['Governance', ['audit']],
+  ['myDesk', ['overview', 'inbox', 'ai', 'messages']],
+  ['filesDecisions', ['files', 'registry', 'vault', 'movement', 'directions', 'calls', 'remote']],
+  ['calendarMedia', ['meetings', 'schedule', 'speeches', 'press', 'greetings']],
+  ['researchRecords', ['search', 'extensions', 'people']],
+  ['governance', ['audit']],
 ];
 
 export const ROLE_META: Record<

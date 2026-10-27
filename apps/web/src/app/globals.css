@@ -1,4 +1,4 @@
-/* Original stylesheet — layout/IA aligned to office workflow UX; no third-party CSS copied. */
+/* Original stylesheet Ã¢ÂÂ layout/IA aligned to office workflow UX; no third-party CSS copied. */
 :root {
   --ink: #132825;
   --muted: #6f817c;
@@ -120,13 +120,22 @@ label {
   overflow: hidden;
 }
 .login-left::after {
-  content: "§";
+  content: "";
   position: absolute;
-  right: 1%;
-  bottom: 0;
-  font: 220px Georgia, serif;
-  color: rgba(255, 255, 255, 0.05);
-  transform: rotate(-10deg);
+  right: -4%;
+  bottom: -8%;
+  width: min(420px, 55vw);
+  height: min(420px, 55vw);
+  background: url('/na-emblem-v4.png') center / contain no-repeat;
+  opacity: 0.12;
+  pointer-events: none;
+}
+.login-emblem {
+  width: 112px;
+  height: auto;
+  display: block;
+  margin-bottom: 28px;
+  filter: drop-shadow(0 10px 22px rgba(0, 0, 0, 0.35));
 }
 .login-left .kicker {
   color: #d3b77b;
@@ -137,9 +146,9 @@ label {
   margin-bottom: 20px;
 }
 .login-left h1 {
-  font-size: clamp(36px, 4vw, 62px);
+  font-size: clamp(28px, 3.4vw, 48px);
   line-height: 1.17;
-  max-width: 600px;
+  max-width: 620px;
   margin: 0 0 24px;
 }
 .login-left p {
@@ -158,6 +167,31 @@ label {
   background: var(--cream);
 }
 .login-box { max-width: 430px; width: 100%; }
+.login-lang {
+  display: inline-flex;
+  gap: 0;
+  margin: 0 0 22px;
+  border: 1px solid #c8d7ce;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #fff;
+}
+.login-lang button {
+  border: 0;
+  background: transparent;
+  padding: 9px 18px;
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--pine);
+  min-height: 36px;
+}
+.login-lang button.active {
+  background: var(--pine);
+  color: #fff;
+}
+.login-lang button:not(.active):hover {
+  background: #f2f8f3;
+}
 .login-box h2 { font-size: 27px; margin: 10px 0; }
 .login-box > p {
   color: var(--muted);
@@ -290,23 +324,20 @@ label {
   border-bottom: 1px solid rgba(255, 255, 255, 0.13);
 }
 .brand-mark {
-  width: 38px;
-  height: 38px;
-  border: 1px solid #caab6d;
-  color: #e0c68d;
-  border-radius: 10px;
-  display: grid;
-  place-items: center;
-  font-family: Georgia, serif;
-  font-size: 23px;
+  width: 46px;
+  height: 46px;
+  object-fit: contain;
   background: transparent;
+  flex-shrink: 0;
 }
 .brand strong {
   font-family: Georgia, serif;
   color: #fff;
-  font-size: 18px;
-  letter-spacing: 0.04em;
+  font-size: 13px;
+  letter-spacing: 0.02em;
   display: block;
+  line-height: 1.25;
+  max-width: 168px;
 }
 .brand span {
   display: block;
@@ -521,7 +552,31 @@ label {
   box-shadow: var(--shadow);
   margin-bottom: 18px;
   padding: 22px;
+  padding-inline: 22px;
   overflow: hidden;
+  text-align: start;
+}
+
+/* Logical property helpers — reduce LTR-only hardcoding under [dir=rtl] */
+html[dir='rtl'] .panel-head,
+html[dir='rtl'] .row {
+  flex-direction: row-reverse;
+}
+html[dir='rtl'] .stats,
+html[dir='rtl'] .grid-form {
+  direction: rtl;
+}
+/* i18n RTL — logical properties for panels (progressive enhancement) */
+@supports (padding-inline: 1px) {
+  .panel {
+    padding-inline: 22px;
+    margin-inline: 0;
+    text-align: start;
+  }
+  .panel-head {
+    padding-inline: 0;
+    text-align: start;
+  }
 }
 .panel h2 { margin-bottom: 12px; }
 .panel-head {
@@ -2422,6 +2477,34 @@ label {
 }
 
 /* Remote work & digital E-sign (Module 7) */
+.remote-preview-panel {
+  border-color: #c5d9cc;
+  background: linear-gradient(180deg, #f7fbf8, #fff);
+}
+.remote-decision-box {
+  background: #f3f5f7;
+  border: 1px solid var(--line, #d8dee6);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin: 10px 0;
+}
+.remote-decision-box p {
+  margin: 6px 0 0;
+  white-space: pre-wrap;
+}
+button.remote-cert.linkish {
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 0.85rem;
+  color: var(--pine, #1e4d3a);
+  cursor: pointer;
+  text-align: left;
+}
+button.remote-cert.linkish:hover {
+  text-decoration: underline;
+}
 .remote-section-head {
   display: flex;
   justify-content: space-between;
@@ -2971,6 +3054,13 @@ label {
   align-items: flex-start;
   gap: 8px;
 }
+.people-card.focus {
+  outline: 2px solid var(--pine);
+  outline-offset: 1px;
+}
+.people-card.inactive {
+  opacity: 0.62;
+}
 .people-photo {
   width: 72px;
   height: 72px;
@@ -3037,6 +3127,37 @@ label {
 }
 
 /* Work records */
+.work-kpi-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.work-kpi {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px 14px;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.work-kpi strong {
+  font-size: 22px;
+  color: var(--pine);
+  font-family: var(--font-display);
+}
+.work-row.focus,
+tr.focus {
+  outline: 2px solid var(--pine);
+  outline-offset: 1px;
+}
+@media (max-width: 800px) {
+  .work-kpi-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
 .work-filters {
   display: flex;
   flex-wrap: wrap;
@@ -3352,10 +3473,20 @@ label {
   border-color: #9fc5ad;
   background: #eef7f1;
 }
+.greet-status.submitted {
+  color: #4a6b52;
+  border-color: #b7d0c2;
+  background: #eef6f0;
+}
 .greet-status.approved {
   color: #b06a20;
   border-color: #e0b889;
   background: #fff6eb;
+}
+.greet-status.rejected {
+  color: #8a3a32;
+  border-color: #e0b0a8;
+  background: #f8e8e6;
 }
 .greet-status.dispatched {
   color: #2f6b4a;
@@ -3931,6 +4062,45 @@ label {
 .speech-status.ok { background: #e4f0e6; color: #2f6b4a; }
 .speech-status.draft { background: #eceff1; color: #556; }
 .speech-status.wait { background: #eef6f0; color: #4a6b52; }
+.speech-status.bad { background: #f8e8e6; color: #8a3a32; }
+.speech-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 14px;
+}
+.speech-ai-banner {
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+.speech-ai-banner.warn {
+  background: #faf0e0;
+  border: 1px solid #e6d2a8;
+  color: #8a5a12;
+}
+.speech-ai-banner.ok {
+  background: #e8f2ec;
+  border: 1px solid #c5d9cc;
+  color: #1e4d3a;
+}
+.speech-reject-input {
+  width: 100%;
+  border: 1px solid var(--line, #d8dee6);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+.speech-prompter-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+.speech-prompter.mirror .speech-prompter-body {
+  transform: scaleX(-1);
+}
 .speech-card-actions {
   display: flex;
   flex-wrap: wrap;
@@ -3945,7 +4115,7 @@ label {
   font-size: 12px;
   color: var(--muted);
 }
-.speech-drawer { width: min(520px, 100%); }
+.speech-drawer { width: min(640px, 100%); }
 .speech-field {
   display: flex;
   flex-direction: column;
@@ -4097,7 +4267,9 @@ label {
   border-radius: 999px;
 }
 .press-status.draft { background: #e8f5ec; color: #2f6b4a; }
+.press-status.submitted { background: #eef6f0; color: #4a6b52; }
 .press-status.approved { background: #fff1e0; color: #b06a20; }
+.press-status.rejected { background: #f8e8e6; color: #8a3a32; }
 .press-status.dispatched { background: #eceff1; color: #555; }
 .press-card h3 {
   margin: 0 0 4px;
@@ -4181,4 +4353,165 @@ label {
 @media (max-width: 900px) {
   .press-kpis,
   .press-bilingual { grid-template-columns: 1fr; }
+}
+
+/* Documents & versions (reference-style OCR / text layers) */
+.doc-versions-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.doc-version-card {
+  background: #f3efe6;
+  border: 1px solid #e2d9c8;
+  border-radius: 14px;
+  padding: 14px 16px 16px;
+  margin-bottom: 14px;
+}
+.doc-version-meta {
+  margin-bottom: 10px;
+}
+.doc-version-title {
+  font-weight: 700;
+  font-size: 1.05rem;
+  color: var(--ink, #1a2332);
+}
+.doc-version-sub {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+  font-size: 0.9rem;
+  color: var(--muted, #5c6b7a);
+}
+.doc-version-reason {
+  margin-top: 6px;
+  font-size: 0.92rem;
+  color: #3d4a3f;
+}
+.doc-version-hash {
+  margin-top: 6px;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 0.72rem;
+  word-break: break-all;
+  color: #6a756e;
+}
+.doc-version-body {
+  background: #fff;
+  border: 1px solid #e6e2d8;
+  border-radius: 12px;
+  padding: 20px 24px;
+  white-space: pre-wrap;
+  word-break: normal;
+  overflow-wrap: break-word;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1rem;
+  line-height: 1.7;
+  color: #1a2332;
+  max-height: 520px;
+  overflow: auto;
+  max-width: 100%;
+  text-align: left;
+}
+.doc-version-add {
+  border-top: 1px dashed var(--line, #d8dee6);
+  padding-top: 16px;
+}
+.ocr-extract-card {
+  margin-top: 10px;
+  background: #f3efe6;
+  border: 1px solid #e2d9c8;
+  border-radius: 12px;
+  padding: 12px;
+}
+.ocr-extract-card .doc-version-body {
+  max-height: 360px;
+}
+
+/* ÂÂÂ Urdu / RTL ÂÂÂ */
+html.lang-ur,
+html[dir='rtl'] {
+  --font-body: 'Noto Nastaliq Urdu', 'DM Sans', Arial, sans-serif;
+  --font-display: 'Noto Nastaliq Urdu', 'Libre Baskerville', Georgia, serif;
+}
+html[dir='rtl'] body {
+  font-size: 15px;
+  line-height: 1.75;
+}
+html[dir='rtl'] h1,
+html[dir='rtl'] h2,
+html[dir='rtl'] h3,
+html[dir='rtl'] .serif,
+html[dir='rtl'] .brand strong {
+  font-family: var(--font-display);
+  letter-spacing: 0;
+}
+html[dir='rtl'] .eyebrow,
+html[dir='rtl'] .nav-group,
+html[dir='rtl'] .kicker,
+html[dir='rtl'] .brand span,
+html[dir='rtl'] .login-left .kicker {
+  letter-spacing: 0.04em;
+  text-transform: none;
+}
+html[dir='rtl'] .nav a,
+html[dir='rtl'] .nav button,
+html[dir='rtl'] .table th,
+html[dir='rtl'] .role-option,
+html[dir='rtl'] .login-left,
+html[dir='rtl'] .doc-version-body {
+  text-align: right;
+}
+html[dir='rtl'] .toast-stack {
+  right: auto;
+  left: 18px;
+}
+html[dir='rtl'] .search-trigger-kbd,
+html[dir='rtl'] .files-search {
+  margin-left: 0;
+  margin-right: auto;
+}
+html[dir='rtl'] .stat::before,
+html[dir='rtl'] .kpi > div::before,
+html[dir='rtl'] .open-file-list > li.file-locked,
+html[dir='rtl'] .greet-kpi {
+  border-left: 0;
+  border-right: 3px solid var(--gold, #bd9a57);
+}
+html[dir='rtl'] .meet-drawer-backdrop {
+  justify-content: flex-start;
+}
+html[dir='rtl'] .work-menu {
+  right: auto;
+  left: 0;
+}
+html[dir='rtl'] .bubble.mine {
+  align-self: flex-start;
+}
+html[dir='rtl'] .bubble:not(.mine) {
+  align-self: flex-end;
+}
+html[dir='rtl'] .login-left::after {
+  right: auto;
+  left: -4%;
+}
+/* In RTL, flex main-start is already on the right â keep natural order for brand/nav. */
+html[dir='rtl'] .topright {
+  flex-direction: row-reverse;
+}
+html[dir='rtl'] .field label,
+html[dir='rtl'] label {
+  text-align: right;
+}
+html[dir='rtl'] input,
+html[dir='rtl'] select,
+html[dir='rtl'] textarea {
+  text-align: right;
+}
+html[dir='rtl'] .btn,
+html[dir='rtl'] button.secondary {
+  flex-direction: row-reverse;
 }

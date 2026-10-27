@@ -1,4 +1,5 @@
 import { Controller, Get } from '@nestjs/common';
+import { SkipThrottle } from '@nestjs/throttler';
 import { Role } from '@prisma/client';
 import { HealthService } from './health.service';
 import { Public, Roles } from '../auth/roles.decorator';
@@ -9,6 +10,7 @@ export class HealthController {
   constructor(private health: HealthService) {}
 
   @Public()
+  @SkipThrottle()
   @Get()
   check() {
     return this.health.check();

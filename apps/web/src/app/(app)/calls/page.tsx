@@ -5,6 +5,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '@/lib/api';
 import { useAuth } from '@/components/AuthProvider';
 import { useToast } from '@/components/Toast';
+import { enumLabel, tf, type Lang } from '@/lib/i18n';
 
 type MatterOpt = { id: string; diaryNo: string; subject: string; status?: string };
 type Person = { id: string; displayName: string; role?: string };
@@ -38,17 +39,14 @@ function callRef(id: string) {
   return `CALL-${id.replace(/-/g, '').slice(0, 8).toUpperCase()}`;
 }
 
-function prettyStatus(s: string) {
-  if (s === 'FOLLOW_UP') return 'Follow-up pending';
-  if (s === 'LOGGED') return 'Message taken';
-  if (s === 'CLOSED') return 'Completed';
-  return s.replace(/_/g, ' ');
+function statusText(lang: Lang, label: (k: string) => string, s: string) {
+  if (s === 'CLOSED') return label('completed');
+  return enumLabel(lang, s);
 }
 
-function prettyPriority(p: string) {
-  if (p === 'NORMAL') return 'Routine';
-  if (p === 'PRIORITY') return 'Priority';
-  return p;
+function priorityText(lang: Lang, label: (k: string) => string, p: string) {
+  if (p === 'NORMAL') return label('cl_priRoutine');
+  return enumLabel(lang, p);
 }
 
 function isInbound(d: string) {
@@ -64,15 +62,15 @@ function fmtWhen(iso: string) {
 }
 
 const FLOW = [
-  { n: 1, t: 'Log Incoming Call', d: 'Record caller, organisation, subject and time.' },
-  { n: 2, t: 'Route or Respond', d: 'Connect the caller or take a message for follow-up.' },
-  { n: 3, t: 'Log Outgoing Call', d: 'Capture outbound dials from the office.' },
-  { n: 4, t: 'Link to Related Matter', d: 'Attach the log to a file, meeting or direction.', badge: 'INTEGRATED' },
-  { n: 5, t: 'Maintain Searchable Register', d: 'Retain the register for audit and reference.' },
-];
+  { n: 1, t: 'cl_flow1t', d: 'cl_flow1d' },
+  { n: 2, t: 'cl_flow2t', d: 'cl_flow2d' },
+  { n: 3, t: 'cl_flow3t', d: 'cl_flow3d' },
+  { n: 4, t: 'cl_flow4t', d: 'cl_flow4d', badge: 'cl_flowIntegrated' },
+  { n: 5, t: 'cl_flow5t', d: 'cl_flow5d' },
+] as const;
 
 export default function CallsPage() {
-  const { user } = useAuth();
+  const { user, lang, label } = useAuth();
   const toast = useToast();
   const [items, setItems] = useState<CallRow[]>([]);
   const [matters, setMatters] = useState<MatterOpt[]>([]);
@@ -84,6 +82,7 @@ export default function CallsPage() {
   const [stat, setStat] = useState<StatFilter>('all');
   const [showForm, setShowForm] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [focusId, setFocusId] = useState<string | null>(null);
   const [linkFor, setLinkFor] = useState<string | null>(null);
   const [matterPick, setMatterPick] = useState('');
   const [form, setForm] = useState({
@@ -115,6 +114,21 @@ export default function CallsPage() {
   useEffect(() => {
     load().catch(() => setItems([]));
   }, [load]);
+
+  useEffect(() => {
+    try {
+      const focus = new URLSearchParams(window.location.search).get('focus');
+      if (focus) setFocusId(focus);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!focusId) return;
+    const el = document.getElementById(`call-${focusId}`);
+    el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [focusId, items]);
 
   const counts = useMemo(() => {
     const linked = items.filter((c) => !!c.matterId).length;
@@ -152,7 +166,7 @@ export default function CallsPage() {
       toast.success(ok);
       await load();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed');
+      toast.error(err instanceof Error ? err.message : label('cm_failed'));
     } finally {
       setBusy(false);
     }
@@ -178,7 +192,7 @@ export default function CallsPage() {
         followUpNotes: '',
       });
       setShowForm(false);
-    }, 'Call logged');
+    }, label('cl_toastLogged'));
   }
 
   return (
@@ -186,29 +200,27 @@ export default function CallsPage() {
       <div className="overview-hero">
         <div>
           <div className="eyebrow">
-            {user?.role === 'SPEAKER' ? "SPEAKER'S OFFICE" : 'OFFICE WORKFLOW'} · CONCEPT DEMO
+            {user?.role === 'SPEAKER' ? label('cm_speakerOffice') : label('cm_officeWorkflow')} ·{' '}
+            {label('cm_conceptDemo')}
           </div>
-          <h1>Call register & telephone log</h1>
-          <p className="muted">
-            Module 6 — Log incoming and outgoing calls, record messages, route to matters, book
-            meetings, and issue directions.
-          </p>
+          <h1>{label('cl_title')}</h1>
+          <p className="muted">{label('cl_heroSub')}</p>
         </div>
         <button type="button" className="btn primary" onClick={() => setShowForm((v) => !v)}>
-          {showForm ? 'Close form' : '+ Log a call'}
+          {showForm ? label('cl_closeForm') : label('cl_logCall')}
         </button>
       </div>
 
       <div className="panel calls-flow-panel">
-        <div className="eyebrow">Module 6 · Telephone call management</div>
-        <h2 style={{ marginTop: 4 }}>Official Parliamentary Telephone Management Flow</h2>
+        <div className="eyebrow">{label('cl_module')}</div>
+        <h2 style={{ marginTop: 4 }}>{label('cl_flowTitle')}</h2>
         <div className="calls-flow">
           {FLOW.map((s) => (
             <div key={s.n} className="calls-flow-step">
               <span className="calls-flow-num">{s.n}</span>
-              {s.badge ? <span className="calls-flow-badge">{s.badge}</span> : null}
-              <strong>{s.t}</strong>
-              <p>{s.d}</p>
+              {'badge' in s ? <span className="calls-flow-badge">{label(s.badge)}</span> : null}
+              <strong>{label(s.t)}</strong>
+              <p>{label(s.d)}</p>
             </div>
           ))}
         </div>
@@ -216,72 +228,72 @@ export default function CallsPage() {
 
       {showForm && (
         <div className="panel">
-          <h2>Log a call</h2>
+          <h2>{label('cl_formTitle')}</h2>
           <form className="grid-form" onSubmit={create}>
             <div className="row" style={{ gap: 12, flexWrap: 'wrap' }}>
               <div className="field" style={{ flex: 1, minWidth: 140 }}>
-                <label>Direction</label>
+                <label>{label('cl_fDirection')}</label>
                 <select value={form.direction} onChange={(e) => setForm({ ...form, direction: e.target.value })}>
-                  <option value="INBOUND">Incoming</option>
-                  <option value="OUTBOUND">Outgoing</option>
+                  <option value="INBOUND">{enumLabel(lang, 'INBOUND')}</option>
+                  <option value="OUTBOUND">{enumLabel(lang, 'OUTBOUND')}</option>
                 </select>
               </div>
               <div className="field" style={{ flex: 1, minWidth: 140 }}>
-                <label>Priority</label>
+                <label>{label('priority')}</label>
                 <select value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value })}>
-                  <option value="NORMAL">Routine</option>
-                  <option value="PRIORITY">Priority</option>
-                  <option value="URGENT">Urgent</option>
-                  <option value="VIP">VIP</option>
+                  <option value="NORMAL">{label('cl_priRoutine')}</option>
+                  <option value="PRIORITY">{enumLabel(lang, 'PRIORITY')}</option>
+                  <option value="URGENT">{enumLabel(lang, 'URGENT')}</option>
+                  <option value="VIP">{enumLabel(lang, 'VIP')}</option>
                 </select>
               </div>
               <div className="field" style={{ flex: 1, minWidth: 140 }}>
-                <label>Status</label>
+                <label>{label('status')}</label>
                 <select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
-                  <option value="LOGGED">Message taken</option>
-                  <option value="FOLLOW_UP">Follow-up pending</option>
-                  <option value="CLOSED">Completed</option>
+                  <option value="LOGGED">{enumLabel(lang, 'LOGGED')}</option>
+                  <option value="FOLLOW_UP">{enumLabel(lang, 'FOLLOW_UP')}</option>
+                  <option value="CLOSED">{label('completed')}</option>
                 </select>
               </div>
             </div>
             <div className="row" style={{ gap: 12, flexWrap: 'wrap' }}>
               <div className="field" style={{ flex: 1, minWidth: 180 }}>
-                <label>Caller / party</label>
+                <label>{label('cl_callerParty')}</label>
                 <input value={form.partyName} onChange={(e) => setForm({ ...form, partyName: e.target.value })} required />
               </div>
               <div className="field" style={{ flex: 1, minWidth: 180 }}>
-                <label>Organisation / office</label>
+                <label>{label('cl_orgOffice')}</label>
                 <input value={form.organisation} onChange={(e) => setForm({ ...form, organisation: e.target.value })} />
               </div>
               <div className="field" style={{ flex: 1, minWidth: 140 }}>
-                <label>Telephone</label>
+                <label>{label('cl_telephone')}</label>
                 <input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
               </div>
             </div>
             <div className="field">
-              <label>Addressed to</label>
+              <label>{label('cl_addressedTo')}</label>
               <input
                 value={form.addressedTo}
                 onChange={(e) => setForm({ ...form, addressedTo: e.target.value })}
-                placeholder="e.g. Speaker (demo)"
+                placeholder={label('cl_addressedPlaceholder')}
               />
             </div>
             <div className="field">
-              <label>Message substance</label>
+              <label>{label('cl_messageSubstance')}</label>
               <textarea rows={3} value={form.summary} onChange={(e) => setForm({ ...form, summary: e.target.value })} required />
             </div>
             <div className="row" style={{ gap: 12, flexWrap: 'wrap' }}>
               <div className="field" style={{ flex: 1 }}>
-                <label>Action required</label>
+                <label>{label('cl_actionRequired')}</label>
                 <input value={form.actionRequired} onChange={(e) => setForm({ ...form, actionRequired: e.target.value })} />
               </div>
               <div className="field" style={{ flex: 1 }}>
-                <label>Follow-up notes</label>
+                <label>{label('cl_followUpNotes')}</label>
                 <input value={form.followUpNotes} onChange={(e) => setForm({ ...form, followUpNotes: e.target.value })} />
               </div>
             </div>
             <button className="btn primary" type="submit" disabled={busy}>
-              Save call log
+              {label('cl_saveLog')}
             </button>
           </form>
         </div>
@@ -290,23 +302,23 @@ export default function CallsPage() {
       <div className="calls-kpi-row">
         <div className="calls-kpi">
           <div className="calls-kpi-value">{counts.total}</div>
-          <div className="calls-kpi-label">Total logged calls</div>
+          <div className="calls-kpi-label">{label('cl_kpiTotal')}</div>
         </div>
         <div className="calls-kpi">
           <div className="calls-kpi-value">{counts.linked}</div>
-          <div className="calls-kpi-label">Linked to matters</div>
+          <div className="calls-kpi-label">{label('cl_kpiLinked')}</div>
         </div>
         <div className="calls-kpi">
           <div className="calls-kpi-value">{counts.vipUrgent}</div>
-          <div className="calls-kpi-label">VIP & urgent</div>
+          <div className="calls-kpi-label">{label('cl_kpiVipUrgent')}</div>
         </div>
         <div className="calls-kpi">
           <div className="calls-kpi-value">{counts.pending}</div>
-          <div className="calls-kpi-label">Action / message pending</div>
+          <div className="calls-kpi-label">{label('cl_kpiPending')}</div>
         </div>
         <div className="calls-kpi">
           <div className="calls-kpi-value">{counts.closed}</div>
-          <div className="calls-kpi-label">Completed calls</div>
+          <div className="calls-kpi-label">{label('cl_kpiCompleted')}</div>
         </div>
       </div>
 
@@ -315,19 +327,19 @@ export default function CallsPage() {
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Search caller, organisation, telephone number, message text, or matter ID…"
+            placeholder={label('cl_searchPlaceholder')}
           />
           <button type="button" className="btn primary" onClick={() => undefined}>
-            Search
+            {label('searchAction')}
           </button>
         </div>
         <div className="calls-filter-row">
-          <span>Direction</span>
+          <span>{label('cl_fDirection')}</span>
           {(
             [
-              ['all', 'All calls'],
-              ['INBOUND', 'Incoming'],
-              ['OUTBOUND', 'Outgoing'],
+              ['all', label('cl_fAllCalls')],
+              ['INBOUND', enumLabel(lang, 'INBOUND')],
+              ['OUTBOUND', enumLabel(lang, 'OUTBOUND')],
             ] as [DirFilter, string][]
           ).map(([k, lab]) => (
             <button key={k} type="button" className={dir === k ? 'active' : ''} onClick={() => setDir(k)}>
@@ -336,12 +348,12 @@ export default function CallsPage() {
           ))}
         </div>
         <div className="calls-filter-row">
-          <span>Matter link</span>
+          <span>{label('cl_fMatterLink')}</span>
           {(
             [
-              ['all', 'All calls'],
-              ['linked', 'Linked to matter'],
-              ['unlinked', 'Unlinked'],
+              ['all', label('cl_fAllCalls')],
+              ['linked', label('cl_fLinked')],
+              ['unlinked', label('cl_fUnlinked')],
             ] as [LinkFilter, string][]
           ).map(([k, lab]) => (
             <button key={k} type="button" className={link === k ? 'active' : ''} onClick={() => setLink(k)}>
@@ -350,13 +362,13 @@ export default function CallsPage() {
           ))}
         </div>
         <div className="calls-filter-row">
-          <span>Priority</span>
+          <span>{label('priority')}</span>
           {(
             [
-              ['all', 'All'],
-              ['VIP', 'VIP'],
-              ['URGENT', 'Urgent'],
-              ['NORMAL', 'Routine'],
+              ['all', label('all')],
+              ['VIP', enumLabel(lang, 'VIP')],
+              ['URGENT', enumLabel(lang, 'URGENT')],
+              ['NORMAL', label('cl_priRoutine')],
             ] as [PriFilter, string][]
           ).map(([k, lab]) => (
             <button key={k} type="button" className={pri === k ? 'active' : ''} onClick={() => setPri(k)}>
@@ -365,13 +377,13 @@ export default function CallsPage() {
           ))}
         </div>
         <div className="calls-filter-row">
-          <span>Status</span>
+          <span>{label('status')}</span>
           {(
             [
-              ['all', 'All'],
-              ['FOLLOW_UP', 'Follow-up pending'],
-              ['LOGGED', 'Message taken'],
-              ['CLOSED', 'Completed'],
+              ['all', label('all')],
+              ['FOLLOW_UP', enumLabel(lang, 'FOLLOW_UP')],
+              ['LOGGED', enumLabel(lang, 'LOGGED')],
+              ['CLOSED', label('completed')],
             ] as [StatFilter, string][]
           ).map(([k, lab]) => (
             <button key={k} type="button" className={stat === k ? 'active' : ''} onClick={() => setStat(k)}>
@@ -386,15 +398,15 @@ export default function CallsPage() {
           <table className="table calls-table">
             <thead>
               <tr>
-                <th>Call ID / time</th>
-                <th>Direction</th>
-                <th>Caller & office</th>
-                <th>Addressed to</th>
-                <th>Message substance</th>
-                <th>Priority</th>
-                <th>Status</th>
-                <th>Linked record / evidence</th>
-                <th>Actions</th>
+                <th>{label('cl_thCallId')}</th>
+                <th>{label('cl_fDirection')}</th>
+                <th>{label('cl_thCaller')}</th>
+                <th>{label('cl_addressedTo')}</th>
+                <th>{label('cl_messageSubstance')}</th>
+                <th>{label('priority')}</th>
+                <th>{label('status')}</th>
+                <th>{label('cl_thLinked')}</th>
+                <th>{label('actions')}</th>
               </tr>
             </thead>
             <tbody>
@@ -402,7 +414,7 @@ export default function CallsPage() {
                 const when = fmtWhen(c.createdAt);
                 const inbound = isInbound(c.direction);
                 return (
-                  <tr key={c.id}>
+                  <tr key={c.id} id={`call-${c.id}`} className={focusId === c.id ? 'focus' : undefined}>
                     <td>
                       <strong>{callRef(c.id)}</strong>
                       <div className="muted">{when.date}</div>
@@ -410,7 +422,7 @@ export default function CallsPage() {
                     </td>
                     <td>
                       <span className={`calls-dir ${inbound ? 'in' : 'out'}`}>
-                        {inbound ? '↓ In' : '↑ Out'}
+                        {inbound ? label('cl_in') : label('cl_out')}
                       </span>
                     </td>
                     <td>
@@ -422,27 +434,29 @@ export default function CallsPage() {
                     <td>
                       <div>{c.summary}</div>
                       {c.actionRequired ? (
-                        <div className="muted">Action: {c.actionRequired}</div>
+                        <div className="muted">{tf(lang, 'cl_actionLine', { text: c.actionRequired })}</div>
                       ) : null}
                       {c.followUpNotes ? (
-                        <div className="muted">Follow-up: {c.followUpNotes}</div>
+                        <div className="muted">{tf(lang, 'cl_followLine', { text: c.followUpNotes })}</div>
                       ) : null}
                     </td>
                     <td>
-                      <span className={`calls-pri ${c.priority}`}>{prettyPriority(c.priority)}</span>
+                      <span className={`calls-pri ${c.priority}`}>{priorityText(lang, label, c.priority)}</span>
                     </td>
                     <td>
-                      <span className={`calls-stat ${c.status}`}>{prettyStatus(c.status)}</span>
+                      <span className={`calls-stat ${c.status}`}>{statusText(lang, label, c.status)}</span>
                     </td>
                     <td>
                       {c.matter ? (
                         <div className="calls-linked">
-                          <div className="calls-linked-tag">Matter linked</div>
+                          <div className="calls-linked-tag">{label('cl_matterLinked')}</div>
                           <Link href={`/files/${c.matter.id}`}>
                             {c.matter.diaryNo} · {c.matter.subject}
                           </Link>
                           {c.matter.status ? (
-                            <div className="muted">Status: {c.matter.status.replace(/_/g, ' ')}</div>
+                            <div className="muted">
+                              {tf(lang, 'cl_statusLine', { status: enumLabel(lang, c.matter.status) })}
+                            </div>
                           ) : null}
                           <button
                             type="button"
@@ -452,7 +466,7 @@ export default function CallsPage() {
                               setMatterPick(c.matterId || '');
                             }}
                           >
-                            Change
+                            {label('cl_change')}
                           </button>
                         </div>
                       ) : c.meeting ? (
@@ -468,7 +482,7 @@ export default function CallsPage() {
                             setMatterPick('');
                           }}
                         >
-                          Link to matter
+                          {label('cl_linkToMatter')}
                         </button>
                       )}
                       {linkFor === c.id && (
@@ -482,12 +496,12 @@ export default function CallsPage() {
                                   method: 'PATCH',
                                   json: { matterId: matterPick || null },
                                 }),
-                              matterPick ? 'Matter linked' : 'Unlinked',
+                              matterPick ? label('cl_toastLinked') : label('cl_toastUnlinked'),
                             ).then(() => setLinkFor(null));
                           }}
                         >
                           <select value={matterPick} onChange={(e) => setMatterPick(e.target.value)}>
-                            <option value="">— Unlink —</option>
+                            <option value="">{label('cl_unlinkOpt')}</option>
                             {matters.map((m) => (
                               <option key={m.id} value={m.id}>
                                 {m.diaryNo} · {m.subject}
@@ -495,10 +509,10 @@ export default function CallsPage() {
                             ))}
                           </select>
                           <button className="btn primary" type="submit" disabled={busy}>
-                            Save
+                            {label('save')}
                           </button>
                           <button type="button" className="btn" onClick={() => setLinkFor(null)}>
-                            Cancel
+                            {label('cancel')}
                           </button>
                         </form>
                       )}
@@ -522,11 +536,11 @@ export default function CallsPage() {
                                   method: 'PATCH',
                                   json: { status: next },
                                 }),
-                              `Status → ${prettyStatus(next)}`,
+                              tf(lang, 'cl_toastStatus', { status: statusText(lang, label, next) }),
                             );
                           }}
                         >
-                          Update status
+                          {label('cl_updateStatus')}
                         </button>
                         <button
                           type="button"
@@ -536,7 +550,7 @@ export default function CallsPage() {
                             setMatterPick(c.matterId || '');
                           }}
                         >
-                          {c.matterId ? 'Switch matter' : 'Link matter'}
+                          {c.matterId ? label('cl_switchMatter') : label('calls_linkMatter')}
                         </button>
                         <button
                           type="button"
@@ -545,11 +559,11 @@ export default function CallsPage() {
                           onClick={() =>
                             run(
                               () => api(`/calls/${c.id}/meeting`, { method: 'POST', json: {} }),
-                              'Meeting booked',
+                              label('cl_toastMeeting'),
                             )
                           }
                         >
-                          Book meeting
+                          {label('cl_bookMeeting')}
                         </button>
                         {isSpeaker && (
                           <button
@@ -569,11 +583,11 @@ export default function CallsPage() {
                                       ownerUserId: owner.id,
                                     },
                                   }),
-                                'Direction issued',
+                                label('cl_toastDirection'),
                               );
                             }}
                           >
-                            + Direction
+                            {label('cl_plusDirection')}
                           </button>
                         )}
                       </div>
@@ -584,7 +598,7 @@ export default function CallsPage() {
               {!filtered.length && (
                 <tr>
                   <td colSpan={9} className="muted">
-                    No calls in this view — log a call to begin.
+                    {label('cl_empty')}
                   </td>
                 </tr>
               )}

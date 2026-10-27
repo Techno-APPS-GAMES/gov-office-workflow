@@ -27,16 +27,26 @@ import { AiModule } from './ai/ai.module';
 import { HealthModule } from './health/health.module';
 import { StorageModule } from './storage/storage.module';
 import { ExportModule } from './export/export.module';
+import { DakModule } from './dak/dak.module';
+import { SyncModule } from './sync/sync.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { RedisThrottlerStorage } from './common/redis-throttler.storage';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    // Only one global tracker. A second named "auth" throttler was also applied to
+    // every route (Nest runs all named trackers), which capped the whole API at 20/min.
     ThrottlerModule.forRoot({
       throttlers: [
-        { name: 'default', ttl: 60_000, limit: 120 },
-        { name: 'auth', ttl: 60_000, limit: 20 },
+        {
+          name: 'default',
+          ttl: Number(process.env.THROTTLE_TTL_MS || 60_000),
+          limit: Number(
+            process.env.THROTTLE_LIMIT ||
+              (process.env.NODE_ENV === 'production' ? 180 : 3000),
+          ),
+        },
       ],
       storage: new RedisThrottlerStorage(),
     }),
@@ -65,6 +75,8 @@ import { RedisThrottlerStorage } from './common/redis-throttler.storage';
     AiModule,
     HealthModule,
     ExportModule,
+    DakModule,
+    SyncModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

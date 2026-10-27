@@ -5,7 +5,7 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { NAV_GROUPS } from '@gow/shared';
 import { useAuth } from './AuthProvider';
-import { pageTitle } from '@/lib/i18n';
+import { pageTitle, personName, roleTitle } from '@/lib/i18n';
 import { roleAvatar } from '@/lib/avatars';
 import { api, saveUser } from '@/lib/api';
 
@@ -14,6 +14,7 @@ const ICONS: Record<string, string> = {
   inbox: '✉',
   messages: '💬',
   files: '▤',
+  registry: '📮',
   vault: '🔒',
   movement: '⇄',
   directions: '◎',
@@ -81,7 +82,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
     if (!user || !mfaRequired || user.mfaEnabled || mfaQr) return;
     api<{ qr: string }>('/auth/mfa/setup', { method: 'POST' })
       .then((s) => setMfaQr(s.qr))
-      .catch(() => setMfaError('Unable to start MFA enrollment'));
+      .catch(() => setMfaError(label('mfaUnable')));
   }, [user, mfaRequired, mfaQr]);
 
   const groups = useMemo(
@@ -116,26 +117,28 @@ export function Shell({ children }: { children: React.ReactNode }) {
       <div className="login-page">
         <section className="login-left">
           <div>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/na-emblem-v4.png" alt="" className="login-emblem" />
             <div className="kicker">{label('kicker')}</div>
-            <h1>MFA required</h1>
-            <p>Complete authenticator enrollment before using the workspace.</p>
+            <h1>{label('mfaRequired')}</h1>
+            <p>{label('mfaRequiredHelp')}</p>
           </div>
         </section>
         <section className="login-right">
           <div className="login-box">
             <form className="grid-form" onSubmit={confirmMfa}>
-              <h2>Enable authenticator</h2>
+              <h2>{label('mfaEnableTitle')}</h2>
               {mfaQr && (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={mfaQr} alt="MFA QR" style={{ width: 200, margin: '0 auto', display: 'block' }} />
               )}
               <div className="field">
-                <label>Confirmation code</label>
+                <label>{label('mfaConfirmCode')}</label>
                 <input value={mfaCode} onChange={(e) => setMfaCode(e.target.value)} maxLength={6} required />
               </div>
               {mfaError && <div className="error">{mfaError}</div>}
               <button className="btn primary" type="submit" disabled={mfaBusy || !mfaQr}>
-                Confirm MFA
+                {label('mfaConfirm')}
               </button>
               <button
                 type="button"
@@ -164,16 +167,17 @@ export function Shell({ children }: { children: React.ReactNode }) {
     <div className="app">
       <aside className="sidebar">
         <div className="brand">
-          <div className="brand-mark">§</div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/na-emblem-v4.png" alt="" className="brand-mark" />
           <div>
-            <strong>Workflow</strong>
+            <strong>{label('appName')}</strong>
             <span>{label('brandSub')}</span>
           </div>
         </div>
-        <nav className="nav" aria-label="Main navigation">
-          {groups.map(([groupLabel, items]) => (
-            <div key={groupLabel}>
-              <div className="nav-group">{groupLabel}</div>
+        <nav className="nav" aria-label={label('mainNav')}>
+          {groups.map(([groupKey, items]) => (
+            <div key={groupKey}>
+              <div className="nav-group">{label(groupKey)}</div>
               {items.map((item) => (
                 <Link
                   key={item}
@@ -209,8 +213,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
               <div className="avatar">{initials(user.displayName)}</div>
             )}
             <div>
-              <strong>{user.displayName}</strong>
-              <span>{user.role.replace(/_/g, ' ')}</span>
+              <strong>{personName(lang, user.displayName)}</strong>
+              <span>{roleTitle(lang, user.role)}</span>
             </div>
           </div>
           <button
@@ -218,7 +222,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
             className="language-toggle"
             onClick={() => setLang(lang === 'en' ? 'ur' : 'en')}
           >
-            {lang === 'ur' ? 'English' : 'اردو'}
+            {lang === 'ur' ? label('langSwitchToEn') : label('langSwitchToUr')}
           </button>
           <button
             type="button"
@@ -251,7 +255,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
               ) : (
                 <span className="dot">{initials(user.displayName)}</span>
               )}
-              <span>{user.displayName}</span>
+              <span>{personName(lang, user.displayName)}</span>
             </div>
             <Link href="/inbox" className="notification-button">✉</Link>
             <span className="live-pill">{label('livePill')}</span>

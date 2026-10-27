@@ -13,13 +13,16 @@ export class VaultController {
   }
 
   @Get('events')
-  events(@Query('limit') limit?: string) {
-    return this.vault.listEvents(Number(limit) || 50);
+  events(
+    @CurrentUser() user: { id: string; role: Role },
+    @Query('limit') limit?: string,
+  ) {
+    return this.vault.listEvents(user, Number(limit) || 50);
   }
 
   @Get('verify')
-  verify() {
-    return this.vault.verifyLedger();
+  verify(@CurrentUser() user: { id: string; role: Role }) {
+    return this.vault.verifyLedger(user);
   }
 
   @Post(':matterId/unlock')
@@ -40,8 +43,8 @@ export class VaultController {
   rotate(
     @Param('matterId') matterId: string,
     @Body() body: { current: string; next: string },
-    @CurrentUser() user: { id: string },
+    @CurrentUser() user: { id: string; role: Role },
   ) {
-    return this.vault.rotatePassword(matterId, user.id, body.current, body.next);
+    return this.vault.rotatePassword(matterId, user, body.current, body.next);
   }
 }

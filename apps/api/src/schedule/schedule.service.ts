@@ -8,6 +8,7 @@ import {
 import { MeetingStatus, Role } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 export type BusySlot = {
   id: string;
@@ -27,11 +28,62 @@ function overlaps(aStart: Date, aEnd: Date, bStart: Date, bEnd: Date) {
   return aStart < bEnd && bStart < aEnd;
 }
 
+/** Diary office hours are evaluated in OFFICE_TZ (default Asia/Karachi). Override via env OFFICE_TZ. */
+const OFFICE_TZ = process.env.OFFICE_TZ || 'Asia/Karachi';
+
+function officeYmdHm(d: Date, tz = OFFICE_TZ) {
+  const f = new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+  const parts = Object.fromEntries(
+    f.formatToParts(d).filter((p) => p.type !== 'literal').map((p) => [p.type, p.value]),
+  );
+  return {
+    y: Number(parts.year),
+    m: Number(parts.month),
+    d: Number(parts.day),
+    h: Number(parts.hour),
+    min: Number(parts.minute),
+  };
+}
+
+/** Map office-local wall time to UTC using Intl (no extra deps). */
+function utcFromOfficeLocal(
+  y: number,
+  m: number,
+  day: number,
+  h: number,
+  min: number,
+  tz = OFFICE_TZ,
+) {
+  let utc = Date.UTC(y, m - 1, day, h, min, 0);
+  for (let i = 0; i < 4; i++) {
+    const loc = officeYmdHm(new Date(utc), tz);
+    const desired = Date.UTC(y, m - 1, day, h, min, 0);
+    const got = Date.UTC(loc.y, loc.m - 1, loc.d, loc.h, loc.min, 0);
+    utc += desired - got;
+  }
+  return new Date(utc);
+}
+
+function addOfficeCalendarDays(anchor: Date, days: number, tz = OFFICE_TZ) {
+  const { y, m, d } = officeYmdHm(anchor, tz);
+  const noon = utcFromOfficeLocal(y, m, d, 12, 0, tz);
+  return officeYmdHm(new Date(noon.getTime() + days * 86_400_000), tz);
+}
+
 @Injectable()
 export class ScheduleService {
   constructor(
     private prisma: PrismaService,
     private audit: AuditService,
+    private notifications: NotificationsService,
   ) {}
 
   list(user: { id: string; role: Role }, ownerId?: string) {
@@ -117,7 +169,7 @@ export class ScheduleService {
   }
 
   /**
-   * Suggest free slots of the same duration within ±2 days (office hours 09:00–17:00 PKT-naive local).
+   * Suggest free slots of the same duration within ±2 days (office hours 09:00–17:00 in OFFICE_TZ).
    * Acceptance test: conflict within overlapping window; alternatives are non-overlapping.
    */
   async suggestAlternatives(
@@ -136,13 +188,11 @@ export class ScheduleService {
     for (const mins of [30, 60, 90, 120, 180]) {
       candidates.push(new Date(startAt.getTime() + mins * 60_000));
     }
-    // Next mornings at 10:00 and afternoons at 14:00 for 3 days
+    // Next mornings at 10:00 and afternoons at 14:00 for 3 office-calendar days
     for (let d = 0; d < 3; d++) {
-      const day = new Date(startAt);
-      day.setDate(day.getDate() + d);
+      const parts = addOfficeCalendarDays(startAt, d);
       for (const hour of [10, 11, 14, 15]) {
-        const c = new Date(day);
-        c.setHours(hour, 0, 0, 0);
+        const c = utcFromOfficeLocal(parts.y, parts.m, parts.d, hour, 0);
         if (c.getTime() !== startAt.getTime()) candidates.push(c);
       }
     }
@@ -150,9 +200,11 @@ export class ScheduleService {
     const alts: AltSlot[] = [];
     const seen = new Set<string>();
     for (const candStart of candidates) {
-      if (candStart.getHours() < 9 || candStart.getHours() >= 17) continue;
+      const startOffice = officeYmdHm(candStart);
+      if (startOffice.h < 9 || startOffice.h >= 17) continue;
       const candEnd = new Date(candStart.getTime() + durationMs);
-      if (candEnd.getHours() > 18) continue;
+      const endOffice = officeYmdHm(candEnd);
+      if (endOffice.h > 18 || (endOffice.h === 18 && endOffice.min > 0)) continue;
       const key = candStart.toISOString();
       if (seen.has(key)) continue;
       seen.add(key);
@@ -162,6 +214,7 @@ export class ScheduleService {
         startAt: candStart.toISOString(),
         endAt: candEnd.toISOString(),
         label: `${candStart.toLocaleString(undefined, {
+          timeZone: OFFICE_TZ,
           weekday: 'short',
           day: 'numeric',
           month: 'short',
@@ -230,40 +283,75 @@ export class ScheduleService {
       throw new BadRequestException('endAt must be after startAt');
     }
 
-    const conflicts = await this.findConflicts(ownerId, startAt, endAt);
-    if (conflicts.length && !data.force) {
-      const alternatives = await this.suggestAlternatives(ownerId, startAt, endAt);
-      throw new ConflictException({
-        message: 'Schedule conflict detected',
-        conflicts: conflicts.map((c) => ({
-          id: c.id,
-          source: c.source,
-          title: c.title,
-          startAt: c.startAt.toISOString(),
-          endAt: c.endAt.toISOString(),
-        })),
-        alternatives,
+    // Serialize conflict check + insert per owner to avoid double-book races.
+    const item = await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(87201402)`);
+      const conflicts = await this.findConflicts(ownerId, startAt, endAt);
+      if (conflicts.length && !data.force) {
+        const alternatives = await this.suggestAlternatives(ownerId, startAt, endAt);
+        throw new ConflictException({
+          message: 'Schedule conflict detected',
+          conflicts: conflicts.map((c) => ({
+            id: c.id,
+            source: c.source,
+            title: c.title,
+            startAt: c.startAt.toISOString(),
+            endAt: c.endAt.toISOString(),
+          })),
+          alternatives,
+        });
+      }
+      const created = await tx.scheduleItem.create({
+        data: {
+          ownerId,
+          title: data.title,
+          startAt,
+          endAt,
+          location: data.location,
+        },
       });
-    }
-
-    const item = await this.prisma.scheduleItem.create({
-      data: {
-        ownerId,
-        title: data.title,
-        startAt,
-        endAt,
-        location: data.location,
-      },
+      return { created, conflicts };
     });
+    const conflicts = item.conflicts;
+    const created = item.created;
     await this.audit.record({
       actorId: actor.id,
       action: 'SCHEDULE_CREATE',
       entityType: 'ScheduleItem',
-      entityId: item.id,
-      summary: `Diary: ${item.title}${conflicts.length ? ' (forced over conflict)' : ''}`,
+      entityId: created.id,
+      summary: `Diary: ${created.title}${conflicts.length ? ' (forced over conflict)' : ''}`,
     });
+
+    const when = `${startAt.toLocaleString()} – ${endAt.toLocaleString()}`;
+    const forcedNote = conflicts.length ? ' (booked over a conflict)' : '';
+    if (ownerId !== actor.id) {
+      await this.notifications.create(
+        ownerId,
+        'SCHEDULE_CHANGE',
+        'Diary updated',
+        `${actor.role}: added "${created.title}" at ${when}${forcedNote}`,
+        created.id,
+      );
+    }
+    if (conflicts.length) {
+      const speakers = await this.prisma.user.findMany({
+        where: { role: { in: [Role.SPEAKER, Role.SECRETARY_GENERAL] }, active: true },
+        select: { id: true },
+      });
+      for (const s of speakers) {
+        if (s.id === actor.id || s.id === ownerId) continue;
+        await this.notifications.create(
+          s.id,
+          'SCHEDULE_CHANGE',
+          'Schedule conflict override',
+          `"${created.title}" forced onto diary at ${when}`,
+          created.id,
+        );
+      }
+    }
+
     return {
-      item,
+      item: created,
       conflictForced: conflicts.length > 0,
       conflicts: conflicts.map((c) => ({
         id: c.id,
@@ -290,6 +378,15 @@ export class ScheduleService {
       entityId: id,
       summary: `Removed diary item: ${item.title}`,
     });
+    if (item.ownerId !== user.id) {
+      await this.notifications.create(
+        item.ownerId,
+        'SCHEDULE_CHANGE',
+        'Diary item removed',
+        `${user.role} removed "${item.title}" from your diary`,
+        id,
+      );
+    }
     return { ok: true };
   }
 }

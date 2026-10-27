@@ -62,13 +62,16 @@ enum CallStatus {
 
 enum PressStatus {
   DRAFT
+  SUBMITTED
   APPROVED
+  REJECTED
   DISPATCHED
 }
 
 enum EsignStatus {
   PENDING
   SIGNED
+  DECLINED
   REVOKED
 }
 
@@ -102,15 +105,18 @@ model User {
   callsLogged        CallRecord[]
   workItemsOwned     WorkItem[] @relation("WorkOwner")
   workItemsCreated   WorkItem[] @relation("WorkCreator")
+  workItemsDecided   WorkItem[] @relation("WorkDecider")
   meetingsCreated    Meeting[]  @relation("MeetingCreator")
   speeches           Speech[]
   pressReleases      PressRelease[]
+  mediaClips         MediaClip[]
   greetings          GreetingCard[]
   esignRecords       EsignRecord[] @relation("EsignSigner")
   esignRequested     EsignRecord[] @relation("EsignRequester")
   scheduleItems      ScheduleItem[]
   meetingActions     MeetingAction[] @relation("MeetingActionOwner")
   auditEvents        AuditEvent[]
+  dakStamped         DakEntry[] @relation("DakStamp")
 }
 
 model RefreshToken {
@@ -144,6 +150,11 @@ model Matter {
   decisionType     String?
   closedAt         DateTime?
   sentForEsign     Boolean        @default(false)
+  /// AI-assisted summary pending human accept (Tech §6 / §4 human-controlled)
+  aiSummary           String?
+  aiSummaryLang       String?
+  aiSummaryAcceptedAt DateTime?
+  aiSummaryAcceptedById String?
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
   versions         MatterVersion[]
@@ -158,8 +169,12 @@ model Matter {
   calls            CallRecord[]
   workItems        WorkItem[]
   esignRecords     EsignRecord[]
+  speeches         Speech[]
+  pressReleases    PressRelease[]
+  greetingCards    GreetingCard[]
   journeyEvents    JourneyEvent[]
   messages         Message[]
+  dakEntries       DakEntry[]
 }
 
 model MatterVersion {
@@ -182,6 +197,8 @@ model MatterNote {
   authorId  String
   author    User     @relation(fields: [authorId], references: [id])
   text      String
+  /// NOTE | PUT_UP | OBSERVATION — append-only noting sheet (S1-02)
+  kind      String   @default("NOTE")
   number    Int
   createdAt DateTime @default(now())
 }
@@ -263,6 +280,12 @@ model Direction {
   createdBy   User            @relation("DirectionCreator", fields: [createdById], references: [id])
   dueDate     DateTime?
   evidence    String?
+  /// Completion evidence file (S1-04)
+  evidenceFileName    String?
+  evidenceContentType String?
+  evidenceSizeBytes   Int?
+  evidenceStorageKey  String?
+  evidenceSha256      String?
   escalateNote String?
   reminderSentAt DateTime?
   createdAt   DateTime        @default(now())
@@ -344,21 +367,29 @@ model CallRecord {
 }
 
 model WorkItem {
-  id          String        @id @default(uuid())
-  title       String
-  kind        String
-  language    String        @default("en")
-  status      WorkItemStatus @default(DRAFT)
-  classification Classification @default(INTERNAL)
-  text        String
-  ownerId     String
-  owner       User          @relation("WorkOwner", fields: [ownerId], references: [id])
-  createdById String
-  createdBy   User          @relation("WorkCreator", fields: [createdById], references: [id])
-  matterId    String?
-  matter      Matter?       @relation(fields: [matterId], references: [id])
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  id             String             @id @default(uuid())
+  code           String?
+  title          String
+  kind           String
+  language       String             @default("en")
+  status         WorkItemStatus     @default(DRAFT)
+  classification Classification     @default(INTERNAL)
+  priority       String             @default("NORMAL")
+  text           String
+  ownerId        String
+  owner          User               @relation("WorkOwner", fields: [ownerId], references: [id])
+  createdById    String
+  createdBy      User               @relation("WorkCreator", fields: [createdById], references: [id])
+  matterId       String?
+  matter         Matter?            @relation(fields: [matterId], references: [id])
+  rejectReason   String?
+  decisionNote   String?
+  decidedAt      DateTime?
+  decidedById    String?
+  decidedBy      User?              @relation("WorkDecider", fields: [decidedById], references: [id])
+  dueAt          DateTime?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
 }
 
 model Meeting {
@@ -409,57 +440,142 @@ model ScheduleItem {
   createdAt   DateTime @default(now())
 }
 
+/// R&I receive / despatch register (NA circular-style stamp fields)
+model DakEntry {
+  id               String    @id @default(uuid())
+  direction        String    // IN | OUT
+  branchName       String    @default("Speaker Office")
+  fromName         String
+  fromDesignation  String?
+  toName           String
+  toDesignation    String?
+  channel          String    @default("HAND") // HAND | POST | EMAIL | INTERNAL
+  subject          String
+  classification   String?
+  diaryNo          String?
+  matterId         String?
+  matter           Matter?   @relation(fields: [matterId], references: [id])
+  reference        String?
+  stampedAt        DateTime  @default(now())
+  stampedById      String
+  stampedBy        User      @relation("DakStamp", fields: [stampedById], references: [id])
+  createdAt        DateTime  @default(now())
+}
+
+/// Multi-step routing presets (Tech / research file movement)
+model RouteTemplate {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  /// JSON array: [{ "toRole": "SECRETARY_GENERAL", "procedure": "Examine and advise" }, ...]
+  stepsJson   String
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+}
+
 model Speech {
-  id        String   @id @default(uuid())
-  title     String
-  body      String
-  language  String   @default("en")
-  status    String   @default("DRAFT")
-  authorId  String
-  author    User     @relation(fields: [authorId], references: [id])
-  eventDate DateTime?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id               String    @id @default(uuid())
+  title            String
+  /// Primary remarks (usually English or chosen language)
+  body             String
+  /// Optional Urdu / second-language body for bilingual delivery
+  bodyUr           String?
+  /// Structured talking points (EN) — source-assisted briefing bullets
+  talkingPoints    String?
+  talkingPointsUr  String?
+  language         String    @default("en")
+  status           String    @default("DRAFT")
+  authorId         String
+  author           User      @relation(fields: [authorId], references: [id])
+  /// Linked authorized matter for source traceability (consultation §3.5)
+  matterId         String?
+  matter           Matter?   @relation(fields: [matterId], references: [id], onDelete: SetNull)
+  /// Free-text source citations (diary nos, brief titles, attachments)
+  sourcesNote      String?
+  eventDate        DateTime?
+  eventVenue       String?
+  /// AI assisted drafting — must stay human-reviewed before APPROVED
+  aiAssisted       Boolean   @default(false)
+  humanReviewedAt  DateTime?
+  approvedAt       DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 }
 
 model PressRelease {
-  id           String      @id @default(uuid())
-  title        String
-  titleUr      String?
-  body         String
-  bodyUr       String?
-  code         String?
-  pidRef       String?
-  wire         String?     @default("PID, PTV News, Radio Pakistan, APP, National Parliamentary Reporters")
-  status       PressStatus @default(DRAFT)
-  authorId     String
-  author       User        @relation(fields: [authorId], references: [id])
-  approvedAt   DateTime?
-  dispatchedAt DateTime?
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
+  id               String      @id @default(uuid())
+  title            String
+  titleUr          String?
+  body             String
+  bodyUr           String?
+  code             String?
+  pidRef           String?
+  wire             String?     @default("PID, PTV News, Radio Pakistan, APP, National Parliamentary Reporters")
+  /// Approved social channels for review support (consultation §3.5)
+  socialTargets    String?     @default("X / Twitter, Facebook, Instagram (official NA accounts only)")
+  socialApproved   Boolean     @default(false)
+  matterId         String?
+  matter           Matter?     @relation(fields: [matterId], references: [id], onDelete: SetNull)
+  sourcesNote      String?
+  embargoUntil     DateTime?
+  aiAssisted       Boolean     @default(false)
+  humanReviewedAt  DateTime?
+  rejectReason     String?
+  status           PressStatus @default(DRAFT)
+  authorId         String
+  author           User        @relation(fields: [authorId], references: [id])
+  approvedAt       DateTime?
+  dispatchedAt     DateTime?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+  clips            MediaClip[]
+}
+
+/// Press / social pickup monitoring (consultation §3.5 media review support)
+model MediaClip {
+  id             String        @id @default(uuid())
+  outlet         String
+  headline       String
+  url            String?
+  note           String?
+  platform       String?       @default("WIRE")
+  observedAt     DateTime      @default(now())
+  pressReleaseId String?
+  pressRelease   PressRelease? @relation(fields: [pressReleaseId], references: [id], onDelete: SetNull)
+  createdById    String
+  createdBy      User          @relation(fields: [createdById], references: [id])
+  createdAt      DateTime      @default(now())
 }
 
 model GreetingCard {
-  id             String      @id @default(uuid())
-  occasion       String
-  occasionKey    String?
-  occasionDate   DateTime?
-  titleUr        String?
-  recipient      String
-  recipientCount Int         @default(0)
-  message        String
-  messageUr      String?
-  style          String      @default("STATE_GOLD")
-  cardCode       String?
-  dispatchRef    String?
-  status         PressStatus @default(DRAFT)
-  authorId       String
-  author         User        @relation(fields: [authorId], references: [id])
-  approvedAt     DateTime?
-  dispatchedAt   DateTime?
-  createdAt      DateTime    @default(now())
-  updatedAt      DateTime    @updatedAt
+  id               String      @id @default(uuid())
+  occasion         String
+  occasionKey      String?
+  occasionDate     DateTime?
+  titleUr          String?
+  recipient        String
+  recipientCount   Int         @default(0)
+  message          String
+  messageUr        String?
+  style            String      @default("STATE_GOLD")
+  /// PROTOCOL_ECARD | PRINT | BOTH
+  channel          String      @default("PROTOCOL_ECARD")
+  cardCode         String?
+  dispatchRef      String?
+  matterId         String?
+  matter           Matter?     @relation(fields: [matterId], references: [id], onDelete: SetNull)
+  sourcesNote      String?
+  deliveryNote     String?
+  aiAssisted       Boolean     @default(false)
+  humanReviewedAt  DateTime?
+  rejectReason     String?
+  status           PressStatus @default(DRAFT)
+  authorId         String
+  author           User        @relation(fields: [authorId], references: [id])
+  approvedAt       DateTime?
+  dispatchedAt     DateTime?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
 }
 
 model EsignRecord {
@@ -472,8 +588,16 @@ model EsignRecord {
   requestedBy   User?       @relation("EsignRequester", fields: [requestedById], references: [id])
   status        EsignStatus @default(PENDING)
   certId        String?     @unique
+  /// LOCAL_PKI (ETO-style advanced under sole control) | WET_INK (scanned wet signature)
+  method        String      @default("LOCAL_PKI")
+  purpose       String?
+  documentHash  String?
+  algorithm     String?     @default("RSA-SHA256")
   signature     String?
   provider      String      @default("local_pki")
+  declineReason String?
+  revokeReason  String?
+  wetInkNote    String?
   signedAt      DateTime?
   createdAt     DateTime    @default(now())
 }

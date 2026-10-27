@@ -7,6 +7,7 @@ import { api } from '@/lib/api';
 import { useAuth } from '@/components/AuthProvider';
 import { useToast } from '@/components/Toast';
 import { roleAvatar } from '@/lib/avatars';
+import { Lang, roleTitle as roleTitleL, tf } from '@/lib/i18n';
 
 type Daily = { date: string; label: string; events: number; seals: number };
 type PersonEvent = {
@@ -69,23 +70,25 @@ type Dash = {
   }[];
 };
 
-function roleTitle(role?: string) {
-  if (!role) return '';
-  return ROLE_META[role as Role]?.title || role.replace(/_/g, ' ');
-}
 
-function relativeLast(iso: string | null) {
-  if (!iso) return 'No recent activity';
+
+function relativeLast(
+  iso: string | null,
+  label: (k: string) => string,
+  lang: Lang,
+  locale?: string,
+) {
+  if (!iso) return label('aud_noRecent');
   const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
-  if (mins < 1) return 'Last activity just now';
-  if (mins < 60) return `Last activity ${mins} min ago`;
+  if (mins < 1) return label('aud_lastNow');
+  if (mins < 60) return tf(lang, 'aud_lastMin', { n: mins });
   const hrs = Math.round(mins / 60);
-  if (hrs < 48) return `Last activity ${hrs} hour${hrs === 1 ? '' : 's'} ago`;
-  return `Last activity ${new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}`;
+  if (hrs < 48) return tf(lang, hrs === 1 ? 'aud_lastHour' : 'aud_lastHours', { n: hrs });
+  return `${label('aud_lastActivity')} ${new Date(iso).toLocaleDateString(locale, { day: 'numeric', month: 'short' })}`;
 }
 
-function fmtStamp(iso: string) {
-  return new Date(iso).toLocaleString(undefined, {
+function fmtStamp(iso: string, locale?: string) {
+  return new Date(iso).toLocaleString(locale, {
     day: 'numeric',
     month: 'short',
     year: 'numeric',
@@ -100,7 +103,14 @@ function shortHash(h?: string | null) {
 }
 
 export default function AuditPage() {
-  const { user } = useAuth();
+  const { user, label, lang } = useAuth();
+  const locale = lang === 'ur' ? 'ur-PK' : undefined;
+  const roleTitle = (r?: string) =>
+    !r
+      ? ''
+      : lang === 'ur'
+        ? roleTitleL(lang, r)
+        : ROLE_META[r as Role]?.title || r.replace(/_/g, ' ');
   const toast = useToast();
   const [dash, setDash] = useState<Dash | null>(null);
   const [busy, setBusy] = useState(false);
@@ -141,14 +151,14 @@ export default function AuditPage() {
       const res = await api<{ valid: boolean; count: number; failedAt?: number }>('/audit/verify');
       setVerifyNote(
         res.valid
-          ? `Chain verified — ${res.count} events intact`
-          : `Chain broken at seq ${res.failedAt}`,
+          ? tf(lang, 'aud_verifiedNote', { n: res.count })
+          : tf(lang, 'aud_brokenNote', { seq: res.failedAt ?? '' }),
       );
-      if (res.valid) toast.success('Audit chain verified');
-      else toast.error(`Chain broken at seq ${res.failedAt}`);
+      if (res.valid) toast.success(label('aud_toastVerified'));
+      else toast.error(tf(lang, 'aud_brokenNote', { seq: res.failedAt ?? '' }));
       await load();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Verify failed');
+      toast.error(err instanceof Error ? err.message : label('aud_verifyFailed'));
     } finally {
       setBusy(false);
     }
@@ -162,7 +172,7 @@ export default function AuditPage() {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
         credentials: 'include',
       });
-      if (!res.ok) throw new Error('Report download failed');
+      if (!res.ok) throw new Error(label('aud_reportFailed'));
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -170,9 +180,9 @@ export default function AuditPage() {
       a.download = `audit-report-${new Date().toISOString().slice(0, 10)}.xlsx`;
       a.click();
       URL.revokeObjectURL(url);
-      toast.success('Excel report downloaded');
+      toast.success(label('aud_toastReport'));
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Download failed');
+      toast.error(err instanceof Error ? err.message : label('aud_downloadFailed'));
     } finally {
       setBusy(false);
     }
@@ -186,7 +196,7 @@ export default function AuditPage() {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
         credentials: 'include',
       });
-      if (!res.ok) throw new Error('Exit pack failed');
+      if (!res.ok) throw new Error(label('aud_exitFailed'));
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -194,9 +204,9 @@ export default function AuditPage() {
       a.download = `gow-exit-pack-${new Date().toISOString().slice(0, 10)}.json`;
       a.click();
       URL.revokeObjectURL(url);
-      toast.success('Records exit pack downloaded');
+      toast.success(label('aud_toastExit'));
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Export failed');
+      toast.error(err instanceof Error ? err.message : label('aud_exportFailed'));
     } finally {
       setBusy(false);
     }
@@ -209,82 +219,84 @@ export default function AuditPage() {
       <div className="overview-hero">
         <div>
           <div className="eyebrow">
-            {user?.role === 'SPEAKER' ? "SPEAKER'S OFFICE" : 'OFFICE WORKFLOW'} · AUDIT
+            {user?.role === 'SPEAKER' ? label('hero_speakerOffice') : label('hero_officeWorkflow')} ·{' '}
+            {label('aud_eyebrow')}
           </div>
-          <h1>Audit dashboard</h1>
+          <h1>{label('audit')}</h1>
           <p className="muted">
-            Insights for services, participation and audit integrity across the office system.
+            {label('aud_heroSub')}
           </p>
         </div>
         <div className="audit-hero-actions">
           <Link href="/remote" className="btn">
-            Lookup certificate
+            {label('aud_lookup')}
           </Link>
           {canExport ? (
             <button type="button" className="btn" onClick={downloadExitPack} disabled={busy}>
-              Exit pack (JSON)
+              {label('aud_exitPack')}
             </button>
           ) : null}
           <button type="button" className="btn primary" onClick={downloadReport} disabled={busy}>
-            Download Excel report
+            {label('aud_downloadExcel')}
           </button>
         </div>
       </div>
 
       {!dash ? (
         <div className="panel">
-          <p className="muted">Loading audit dashboard…</p>
+          <p className="muted">{label('aud_loading')}</p>
         </div>
       ) : (
         <>
           <div className="dash-kpis accent-kpis audit-kpis">
             <div className="dash-kpi accent-sky">
-              <div className="label">Active workflows</div>
+              <div className="label">{label('aud_kpiWorkflows')}</div>
               <div className="value">{dash.kpis.activeWorkflows}</div>
-              <div className="hint">Open files &amp; live matters</div>
+              <div className="hint">{label('aud_kpiWorkflowsHint')}</div>
             </div>
             <div className="dash-kpi accent-blue">
-              <div className="label">Total actions</div>
+              <div className="label">{label('aud_kpiActions')}</div>
               <div className="value">{dash.kpis.totalActions}</div>
-              <div className="hint">Audit events · last 30 days</div>
+              <div className="hint">{label('aud_kpiActionsHint')}</div>
             </div>
             <div className="dash-kpi accent-gold">
-              <div className="label">E-sign / SHA-256</div>
+              <div className="label">{label('aud_kpiEsign')}</div>
               <div className="value">{dash.kpis.esignEvents}</div>
-              <div className="hint">Signed certificates on ledger</div>
+              <div className="hint">{label('aud_kpiEsignHint')}</div>
             </div>
             <div className="dash-kpi accent-amber">
-              <div className="label">Urgent queue</div>
+              <div className="label">{label('aud_kpiUrgent')}</div>
               <div className="value">{dash.kpis.urgentQueue}</div>
-              <div className="hint">Pending seals &amp; direction attention</div>
+              <div className="hint">{label('aud_kpiUrgentHint')}</div>
             </div>
             <div className="dash-kpi accent-red alert">
-              <div className="label">Rejected / flagged</div>
+              <div className="label">{label('aud_kpiRejected')}</div>
               <div className="value" style={{ color: '#a84e40' }}>
                 {dash.kpis.rejectedFlagged}
               </div>
-              <div className="hint">Revoked seals, overdue, rejected work</div>
+              <div className="hint">{label('aud_kpiRejectedHint')}</div>
             </div>
           </div>
 
           <div className="audit-mid">
             <div className="panel audit-chart-panel">
-              <div className="eyebrow">Daily audit activity</div>
-              <h2>Volume &amp; seal activity</h2>
+              <div className="eyebrow">{label('aud_dailyEyebrow')}</div>
+              <h2>{label('aud_volume')}</h2>
               <p className="muted audit-lead">
-                {dash.dailySummary.eventsPast5} events in the past 5 days ·{' '}
-                {dash.dailySummary.sealDays} day
-                {dash.dailySummary.sealDays === 1 ? '' : 's'} with digital seals.
+                {tf(lang, 'aud_dailyLead', {
+                  a: dash.dailySummary.eventsPast5,
+                  b: dash.dailySummary.sealDays,
+                })}
               </p>
               <div className="audit-legend">
                 <span>
-                  <i className="swatch pine" /> Events logged
+                  <i className="swatch pine" /> {label('aud_legendEvents')}
                 </span>
                 <span>
-                  <i className="swatch gold" /> Seals / receipts
+                  <i className="swatch gold" /> {label('aud_legendSeals')}
                 </span>
               </div>
-              <div className="audit-bars" role="img" aria-label="Daily audit activity chart">
+              <div className="audit-bars" role="img" aria-label={label('aud_chartAria')}>
                 {dash.daily.map((d) => {
                   const total = d.events + d.seals;
                   const h = Math.max(4, Math.round((total / maxBar) * 120));
@@ -304,23 +316,23 @@ export default function AuditPage() {
             </div>
 
             <div className="panel audit-chain-panel">
-              <div className="eyebrow">Integrity</div>
-              <h2>{dash.chain.valid ? 'Audit chain verified' : 'Audit chain issue'}</h2>
+              <div className="eyebrow">{label('aud_integrity')}</div>
+              <h2>{dash.chain.valid ? label('aud_toastVerified') : label('aud_chainIssue')}</h2>
               <p className="muted audit-lead">
-                {dash.chain.count} events checked against a linked hash chain and ledger checkpoint.
+                {tf(lang, 'aud_chainLead', { n: dash.chain.count })}
               </p>
               <div className="audit-chain-fields">
                 <div>
-                  <span>Last checkpoint</span>
+                  <span>{label('aud_lastCheckpoint')}</span>
                   <code>{shortHash(dash.chain.lastCheckpoint)}</code>
                 </div>
                 <div>
-                  <span>Previous link</span>
+                  <span>{label('aud_prevLink')}</span>
                   <code>{shortHash(dash.chain.prevHash)}</code>
                 </div>
                 <div>
-                  <span>Last update</span>
-                  <strong>{dash.chain.lastAt ? fmtStamp(dash.chain.lastAt) : '—'}</strong>
+                  <span>{label('aud_lastUpdate')}</span>
+                  <strong>{dash.chain.lastAt ? fmtStamp(dash.chain.lastAt, locale) : '—'}</strong>
                 </div>
               </div>
               {verifyNote ? (
@@ -335,7 +347,7 @@ export default function AuditPage() {
                 disabled={busy}
                 onClick={verifyChain}
               >
-                {busy ? 'Verifying…' : 'Verify chain'}
+                {busy ? label('aud_verifying') : label('audit_verify')}
               </button>
             </div>
           </div>
@@ -343,21 +355,21 @@ export default function AuditPage() {
           <div className="panel audit-people-panel">
             <div className="remote-section-head">
               <div>
-                <div className="eyebrow">Activity by person</div>
-                <h2>Staff participation &amp; audit trail</h2>
+                <div className="eyebrow">{label('aud_byPerson')}</div>
+                <h2>{label('aud_participation')}</h2>
                 <p className="muted audit-lead">
-                  Select an officer to inspect assignments, overdue work, and recent ledger events.
+                  {label('aud_selectOfficer')}
                 </p>
               </div>
               <label className="audit-filter">
-                Filter by role
+                {label('aud_filterRole')}
                 <select value={filterRole} onChange={(e) => setFilterRole(e.target.value)}>
-                  <option value="all">All officers</option>
-                  <option value="SPEAKER">Speaker</option>
-                  <option value="SECRETARY_GENERAL">Secretary General</option>
-                  <option value="SPECIAL_SECRETARY">Special Secretary</option>
-                  <option value="DG_IT">DG IT</option>
-                  <option value="ADMIN">Administrator</option>
+                  <option value="all">{label('aud_allOfficers')}</option>
+                  <option value="SPEAKER">{roleTitle('SPEAKER')}</option>
+                  <option value="SECRETARY_GENERAL">{roleTitle('SECRETARY_GENERAL')}</option>
+                  <option value="SPECIAL_SECRETARY">{roleTitle('SPECIAL_SECRETARY')}</option>
+                  <option value="DG_IT">{roleTitle('DG_IT')}</option>
+                  <option value="ADMIN">{roleTitle('ADMIN')}</option>
                 </select>
               </label>
             </div>
@@ -385,12 +397,12 @@ export default function AuditPage() {
                         <div className="audit-person-main">
                           <strong>{p.displayName}</strong>
                           <span className="muted">
-                            {roleTitle(p.role)} · {relativeLast(p.lastAt)}
+                            {roleTitle(p.role)} · {relativeLast(p.lastAt, label, lang, locale)}
                           </span>
                         </div>
                         <div className="audit-person-stats">
-                          <span>{p.actions} actions</span>
-                          <span>{p.completions} completions</span>
+                          <span>{tf(lang, 'aud_nActions', { n: p.actions })}</span>
+                          <span>{tf(lang, 'aud_nCompletions', { n: p.completions })}</span>
                         </div>
                       </button>
                     </li>
@@ -401,37 +413,36 @@ export default function AuditPage() {
               {selected ? (
                 <div className="audit-person-detail">
                   <h3>
-                    {selected.displayName} — activity detail
+                    {selected.displayName} — {label('aud_activityDetail')}
                   </h3>
                   <div className="audit-mini-kpis">
                     <div>
                       <strong>{selected.assignments}</strong>
-                      <span>Assignments</span>
+                      <span>{label('aud_assignments')}</span>
                     </div>
                     <div>
                       <strong>{selected.pending}</strong>
-                      <span>Pending</span>
+                      <span>{label('pending')}</span>
                     </div>
                     <div>
                       <strong className={selected.pastDue ? 'bad' : ''}>{selected.pastDue}</strong>
-                      <span>Past due</span>
+                      <span>{label('aud_pastDue')}</span>
                     </div>
                     <div>
                       <strong>{selected.totalRecords}</strong>
-                      <span>Ledger events</span>
+                      <span>{label('aud_ledgerEvents')}</span>
                     </div>
                   </div>
                   <div className="audit-note">
-                    Past due counts track directions still open after their due date or escalated for
-                    attention. Completions include seals, approvals, and closed work.
+                    {label('aud_note')}
                   </div>
                   <div className="audit-timeline">
                     {selected.recent.length === 0 ? (
-                      <p className="muted">No recent events for this officer.</p>
+                      <p className="muted">{label('aud_noEvents')}</p>
                     ) : (
                       selected.recent.map((e) => (
                         <article key={e.id} className="audit-timeline-item">
-                          <time>{fmtStamp(e.createdAt)}</time>
+                          <time>{fmtStamp(e.createdAt, locale)}</time>
                           <div>
                             <span className="audit-action-tag">{e.action.replace(/_/g, ' ')}</span>
                             <p>{e.summary}</p>
@@ -448,15 +459,15 @@ export default function AuditPage() {
 
           <div className="audit-bottom">
             <div className="panel">
-              <div className="eyebrow">Office workload and delay</div>
-              <h2>Pending &amp; past due by officer</h2>
+              <div className="eyebrow">{label('aud_workloadEyebrow')}</div>
+              <h2>{label('aud_pendingByOfficer')}</h2>
               <table className="table audit-table">
                 <thead>
                   <tr>
-                    <th>Officer</th>
-                    <th>Actions</th>
-                    <th>Pending</th>
-                    <th>Past due</th>
+                    <th>{label('officer')}</th>
+                    <th>{label('actions')}</th>
+                    <th>{label('pending')}</th>
+                    <th>{label('aud_pastDue')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -476,21 +487,21 @@ export default function AuditPage() {
             </div>
 
             <div className="panel">
-              <div className="eyebrow">Matters by subject area</div>
-              <h2>Open workload markers</h2>
+              <div className="eyebrow">{label('aud_mattersBySubject')}</div>
+              <h2>{label('aud_markers')}</h2>
               <table className="table audit-table">
                 <thead>
                   <tr>
-                    <th>Subject area</th>
-                    <th>Matters</th>
-                    <th>Avg age (days)</th>
+                    <th>{label('files_area')}</th>
+                    <th>{label('search_matters')}</th>
+                    <th>{label('aud_avgAge')}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {dash.bySubject.length === 0 ? (
                     <tr>
                       <td colSpan={3} className="muted">
-                        No open matters.
+                        {label('aud_noOpenMatters')}
                       </td>
                     </tr>
                   ) : (
@@ -500,12 +511,12 @@ export default function AuditPage() {
                           <strong>{s.label}</strong>
                         </td>
                         <td>
-                          {s.count} matter{s.count === 1 ? '' : 's'}
+                          {s.count === 1 ? label('aud_oneMatter') : tf(lang, 'aud_nMatters', { n: s.count })}
                         </td>
                         <td>
                           {s.avgDelayDays <= 10
-                            ? `Within ${s.avgDelayDays || 1} days`
-                            : `${s.avgDelayDays} days avg`}
+                            ? tf(lang, 'aud_within', { n: s.avgDelayDays || 1 })
+                            : tf(lang, 'aud_daysAvg', { n: s.avgDelayDays })}
                         </td>
                       </tr>
                     ))
@@ -522,7 +533,7 @@ export default function AuditPage() {
               onClick={() => setShowEvents((v) => !v)}
             >
               <span>
-                Explore {dash.events.length} recorded events
+                {tf(lang, 'aud_explore', { n: dash.events.length })}
               </span>
               <span aria-hidden>{showEvents ? '▴' : '▾'}</span>
             </button>
@@ -531,19 +542,19 @@ export default function AuditPage() {
                 <table className="table audit-table">
                   <thead>
                     <tr>
-                      <th>Seq</th>
-                      <th>When</th>
-                      <th>Action</th>
-                      <th>Actor</th>
-                      <th>Summary</th>
-                      <th>Hash</th>
+                      <th>{label('aud_seq')}</th>
+                      <th>{label('sch_when')}</th>
+                      <th>{label('aud_action')}</th>
+                      <th>{label('aud_actor')}</th>
+                      <th>{label('calls_summary')}</th>
+                      <th>{label('aud_hash')}</th>
                     </tr>
                   </thead>
                   <tbody>
                     {dash.events.map((e) => (
                       <tr key={e.id}>
                         <td>{e.seq}</td>
-                        <td>{fmtStamp(e.createdAt)}</td>
+                        <td>{fmtStamp(e.createdAt, locale)}</td>
                         <td>{e.action}</td>
                         <td>{e.actor?.displayName || '—'}</td>
                         <td>{e.summary}</td>
@@ -557,8 +568,7 @@ export default function AuditPage() {
               </div>
             ) : null}
             <p className="muted audit-footer-note">
-              Checks include digital certifications, per-action individual leaf identity, and
-              production-level signature process health on the hash chain.
+              {label('aud_footer')}
             </p>
           </div>
         </>

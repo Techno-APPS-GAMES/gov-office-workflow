@@ -8,6 +8,7 @@ import {
   WorkItemStatus,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { matterVisibilityWhere } from '../auth/access';
 import Redis from 'ioredis';
 
 @Injectable()
@@ -36,10 +37,26 @@ export class HealthService {
     } catch {
       redis = false;
     }
+    const warnings: string[] = [];
+    if ((process.env.POSTGRES_PASSWORD || 'gow_change_me') === 'gow_change_me') {
+      warnings.push('Default Postgres password in use');
+    }
+    if (!process.env.REDIS_PASSWORD && (process.env.REDIS_URL || '').includes('localhost')) {
+      warnings.push('Redis has no password (local/dev)');
+    }
+    if (
+      process.env.PILOT_MODE !== 'true' &&
+      process.env.NODE_ENV !== 'production' &&
+      /walkwell|ngrok|cloudflare/i.test(process.env.APP_URL || '')
+    ) {
+      warnings.push('Public APP_URL without PILOT_MODE — use production build for demos');
+    }
     return {
       ok: db,
       db,
       redis,
+      warnings,
+      pilotMode: process.env.PILOT_MODE === 'true',
       ts: new Date().toISOString(),
     };
   }
@@ -74,6 +91,7 @@ export class HealthService {
   async dashboard(user: { id: string; role: Role }) {
     const now = new Date();
     const weekAhead = new Date(now.getTime() + 7 * 86400_000);
+    const matterWhere = matterVisibilityWhere(user);
 
     const [
       totalMatters,
@@ -100,30 +118,43 @@ export class HealthService {
       workAwaiting,
       directionRemindersDue,
     ] = await Promise.all([
-      this.prisma.matter.count(),
-      this.prisma.matter.count({ where: { status: { not: MatterStatus.CLOSED } } }),
-      this.prisma.matter.count({ where: { status: MatterStatus.CLOSED } }),
-      this.prisma.matter.count({ where: { status: MatterStatus.AWAITING_DECISION } }),
+      this.prisma.matter.count({ where: matterWhere }),
+      this.prisma.matter.count({
+        where: { AND: [matterWhere, { status: { not: MatterStatus.CLOSED } }] },
+      }),
+      this.prisma.matter.count({
+        where: { AND: [matterWhere, { status: MatterStatus.CLOSED }] },
+      }),
+      this.prisma.matter.count({
+        where: { AND: [matterWhere, { status: MatterStatus.AWAITING_DECISION }] },
+      }),
       this.prisma.direction.count({ where: { status: DirectionStatus.OVERDUE } }),
       this.prisma.direction.count({
         where: { status: { notIn: [DirectionStatus.CLOSED] } },
       }),
       this.prisma.direction.count({ where: { status: DirectionStatus.EVIDENCE_SUBMITTED } }),
       this.prisma.direction.count({ where: { status: DirectionStatus.ESCALATED } }),
-      this.prisma.matter.count({ where: { classification: Classification.PUBLIC } }),
-      this.prisma.matter.count({ where: { classification: Classification.INTERNAL } }),
-      this.prisma.matter.count({ where: { classification: Classification.CONFIDENTIAL } }),
+      this.prisma.matter.count({
+        where: { AND: [matterWhere, { classification: Classification.PUBLIC }] },
+      }),
+      this.prisma.matter.count({
+        where: { AND: [matterWhere, { classification: Classification.INTERNAL }] },
+      }),
+      this.prisma.matter.count({
+        where: { AND: [matterWhere, { classification: Classification.CONFIDENTIAL }] },
+      }),
       this.prisma.direction.groupBy({
         by: ['status'],
         _count: { _all: true },
       }),
       this.prisma.matter.groupBy({
         by: ['subjectArea'],
+        where: matterWhere,
         _count: { _all: true },
         orderBy: { _count: { subjectArea: 'desc' } },
       }),
       this.prisma.matter.findMany({
-        where: { status: { not: MatterStatus.CLOSED } },
+        where: { AND: [matterWhere, { status: { not: MatterStatus.CLOSED } }] },
         orderBy: { updatedAt: 'desc' },
         take: 10,
         include: {
@@ -188,6 +219,7 @@ export class HealthService {
       { key: 'IN_PROGRESS', label: 'In progress', count: dirMap[DirectionStatus.IN_PROGRESS] || 0 },
       { key: 'ISSUED', label: 'Issued (new)', count: dirMap[DirectionStatus.ISSUED] || 0 },
       { key: 'EVIDENCE_SUBMITTED', label: 'Evidence submitted', count: dirMap[DirectionStatus.EVIDENCE_SUBMITTED] || 0 },
+      { key: 'RETURNED', label: 'Returned', count: dirMap[DirectionStatus.RETURNED] || 0 },
       {
         key: 'OVERDUE_ESCALATED',
         label: 'Overdue / escalated',
@@ -207,7 +239,8 @@ export class HealthService {
       pct: Math.round((g._count._all / subjectTotal) * 1000) / 10,
     }));
 
-    const attention = overdueDirections + awaitingDecision + escalatedDirections;
+    // Overdue + escalated only (awaiting decision is a separate KPI)
+    const attention = overdueDirections + escalatedDirections;
 
     return {
       kpis: {
@@ -237,10 +270,12 @@ export class HealthService {
       },
       openFiles: openFiles.map((m) => {
         const unlocked = (m.vaultGrants?.length || 0) > 0 || user.role === Role.ADMIN;
+        const lockedConfidential =
+          m.classification === Classification.CONFIDENTIAL && !unlocked;
         return {
           id: m.id,
           diaryNo: m.diaryNo,
-          subject: m.subject,
+          subject: lockedConfidential ? '[Confidential — unlock vault]' : m.subject,
           sender: m.sender,
           status: m.status,
           classification: m.classification,

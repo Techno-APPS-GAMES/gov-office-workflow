@@ -7,27 +7,60 @@ export default function GuidePage() {
   const { label } = useAuth();
   return (
     <>
-      <PageHeader
-        title={label('guide')}
-        subtitle="How to exercise the production file-routing workflow end to end."
-      />
+      <PageHeader title={label('guide')} subtitle={label('gd_subtitle')} />
       <div className="panel">
-        <h2>Core path</h2>
+        <h2>{label('gd_pathA')}</h2>
         <ol>
-          <li>Sign in as Speaker → Files &amp; documents → Register matter (attach PDF if needed).</li>
-          <li>Open the matter → Route to Secretary General with a procedure.</li>
-          <li>Switch role → Acknowledge receipt → Complete procedure.</li>
-          <li>Speaker → Record decision (optionally issue a direction).</li>
-          <li>Audit dashboard → Verify hash chain.</li>
+          <li>{label('gd_a1')}</li>
+          <li>{label('gd_a2')}</li>
+          <li>{label('gd_a3')}</li>
+          <li>{label('gd_a4')}</li>
+          <li>{label('gd_a5')}</li>
+          <li>{label('gd_a6')}</li>
         </ol>
       </div>
       <div className="panel">
-        <h2>Confidential vault</h2>
-        <p className="muted">
-          Register with classification Confidential and a file password. Unlock from Confidential vault
-          for a time-boxed grant, then open the matter.
-        </p>
+        <h2>{label('gd_pathB')}</h2>
+        <ol>
+          <li>{label('gd_b1')}</li>
+          <li>{label('gd_b2')}</li>
+          <li>{label('gd_b3')}</li>
+          <li>{label('gd_b4')}</li>
+          <li>{label('gd_b5')}</li>
+        </ol>
       </div>
+      <div className="panel">
+        <h2>{label('gd_habits')}</h2>
+        <ul>
+          <li>
+            <strong>{label('gd_h1t')}</strong> {label('gd_h1d')}
+          </li>
+          <li>
+            <strong>{label('gd_h2t')}</strong> {label('gd_h2d')}
+          </li>
+          <li>
+            <strong>{label('gd_h3t')}</strong> {label('gd_h3d')}
+          </li>
+          <li>
+            <strong>{label('gd_h4t')}</strong> {label('gd_h4d')}
+          </li>
+          <li>
+            <strong>{label('gd_h5t')}</strong> {label('gd_h5d')}
+          </li>
+          <li>
+            {label('gd_mfaPre')} <code dir="ltr">PILOT_MODE=true</code> {label('gd_mfaPost')}
+          </li>
+        </ul>
+      </div>
+      {process.env.NEXT_PUBLIC_SHOW_SEED_CREDS === 'true' && (
+        <div className="panel">
+          <h2>{label('gd_seed')}</h2>
+          <p className="muted">
+            {label('gd_seedPw')} <code dir="ltr">SEED_PASSWORD</code>
+            {label('gd_seedClose')} {label('gd_seedUsers')}
+          </p>
+        </div>
+      )}
     </>
   );
 }
